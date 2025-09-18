@@ -27,19 +27,20 @@ import (
 // };
 
 type SensorPacket struct {
-	length   uint16
-	sequence uint32
-	values   []SensorValue
+	Length    uint16
+	TimeSync  int32
+	Immediate bool
+	Values    []SensorValue
 }
 
 type SensorValue struct {
-	sensorType SensorType
-	fieldType  SensorFieldType
-	value      int
+	SensorType SensorType
+	FieldType  SensorFieldType
+	Value      int32
 }
 
 func (v *SensorValue) IsZero() bool {
-	return v.value == 0
+	return v.Value == 0
 }
 
 func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
@@ -48,50 +49,52 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 	}
 
 	pkt := SensorPacket{
-		length:   uint16(data[0] * 2),
-		sequence: uint32(data[1] | (data[2] << 8) | (data[3] << 16)),
-		values:   nil,
+		Length:   uint16(data[0] * 2),
+		TimeSync: int32(data[1] | (data[2] << 8) | (data[3] << 16)),
+		Values:   nil,
 	}
+	pkt.Immediate = (pkt.TimeSync & 0x800000) != 0
+	pkt.TimeSync = pkt.TimeSync & 0x7FFFFF
 
-	if len(data) < int(pkt.length) {
-		return pkt, fmt.Errorf("data length mismatch, %d < %d", len(data), pkt.length)
+	if len(data) < int(pkt.Length) {
+		return pkt, fmt.Errorf("data length mismatch, %d < %d", len(data), pkt.Length)
 	}
 
 	offset := 3
 
 	// Compute the number of sensor values in the packet.
 	numberOfValues := 0
-	for offset <= int(pkt.length)-2 {
+	for offset <= int(pkt.Length)-2 {
 		sensorType := SensorType(data[offset])
 		fieldType := GetFieldTypeFromType(sensorType)
 		offset += 1 + ((fieldType.SizeInBits() + 7) / 8)
 		numberOfValues++
 	}
-	pkt.values = make([]SensorValue, 0, numberOfValues)
+	pkt.Values = make([]SensorValue, 0, numberOfValues)
 
 	// Now decode the values.
 	offset = 3
 
-	for offset <= int(pkt.length)-2 {
-		value := SensorValue{sensorType: SensorType(data[offset])}
-		value.fieldType = GetFieldTypeFromType(value.sensorType)
+	for offset <= int(pkt.Length)-2 {
+		value := SensorValue{SensorType: SensorType(data[offset])}
+		value.FieldType = GetFieldTypeFromType(value.SensorType)
 
 		offset += 1
 
-		// depending on fieldType, read the appropriate value.
+		// depending on FieldType, read the appropriate value.
 		// the written values are in little-endian format
-		switch value.fieldType {
+		switch value.FieldType {
 		case TypeS8:
-			value.value = int(data[offset])
-			pkt.values = append(pkt.values, value)
+			value.Value = int32(data[offset])
+			pkt.Values = append(pkt.Values, value)
 			offset += 1
 		case TypeS16:
-			value.value = int(binary.LittleEndian.Uint16(data[offset : offset+2]))
-			pkt.values = append(pkt.values, value)
+			value.Value = int32(binary.LittleEndian.Uint16(data[offset : offset+2]))
+			pkt.Values = append(pkt.Values, value)
 			offset += 2
 		case TypeS32:
-			value.value = int(int32(binary.LittleEndian.Uint32(data[offset : offset+4])))
-			pkt.values = append(pkt.values, value)
+			value.Value = int32(binary.LittleEndian.Uint32(data[offset : offset+4]))
+			pkt.Values = append(pkt.Values, value)
 			offset += 4
 		}
 	}

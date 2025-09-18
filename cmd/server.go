@@ -33,10 +33,28 @@ func (this *Callback) OnMessage(c *sensor_server.Conn, p sensor_server.Packet) b
 		// that is listed in the JSON configuration file.
 		fmt.Printf("OnMessage (register):[%v] [%v]\n", GetLength(p), string(GetBody(p)))
 		mac := string(GetBody(p))
-		storeIndex := this.config.StoreMap[mac]
-		c.SetIndex(storeIndex)
+		groupIndex := this.config.GroupMap[mac]
+		c.SetIndex(groupIndex)
 	} else {
 		fmt.Printf("OnMessage:[%v] [%v]\n", GetLength(p), string(GetBody(p)))
+
+		groupIndex := int32(c.GetIndex())
+
+		// Loop over the sensor values, since every sensor value has its own sensor data stream
+		if sensorPacket, error := sensor_server.DecodeNetworkPacket(p.Body); error == nil {
+			for _, sensorValue := range sensorPacket.Values {
+				// Get sensor type from the packet
+				groupIndex, streamIndex := this.store.RegisterSensor(groupIndex, "sensor1", sensorValue.SensorType)
+				if groupIndex >= 0 && streamIndex >= 0 {
+					// WriteSensorValue(groupIndex int, sensorIndex int, packetImmediate bool, packetTimeSync int, sensorValue SensorValue) error {
+					if err := this.store.WriteSensorValue(groupIndex, streamIndex, sensorPacket.Immediate, sensorPacket.TimeSync, sensorValue); err != nil {
+						fmt.Printf("Error writing sensor value: %v\n", err)
+					}
+				} else {
+					fmt.Printf("Error registering sensor value: %v\n", sensorValue)
+				}
+			}
+		}
 	}
 	return true
 }

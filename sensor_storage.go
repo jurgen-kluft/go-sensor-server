@@ -88,7 +88,7 @@ func NewSensorStreamBlock(stream *SensorStream, sampleType SensorFieldType, samp
 	return block
 }
 
-func (s *SensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, packetTimeSync int, sensorValue SensorValue) {
+func (s *SensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, packetTimeSync int32, sensorValue SensorValue) {
 	s.LastSample = sensorValue
 	if sensorValue.IsZero() {
 		return // Default value
@@ -111,13 +111,13 @@ func (s *SensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, pac
 		s.Buffer[byteIndex] |= (1 << bitIndex) // Set the bit
 	case TypeS8:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex
-		s.Buffer[byteIndex] = byte(sensorValue.value)
+		s.Buffer[byteIndex] = byte(sensorValue.Value)
 	case TypeS16:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex*2
-		binary.LittleEndian.PutUint16(s.Buffer[byteIndex:byteIndex+2], uint16(sensorValue.value))
+		binary.LittleEndian.PutUint16(s.Buffer[byteIndex:byteIndex+2], uint16(sensorValue.Value))
 	case TypeS32:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex*4
-		binary.LittleEndian.PutUint32(s.Buffer[byteIndex:byteIndex+4], uint32(sensorValue.value))
+		binary.LittleEndian.PutUint32(s.Buffer[byteIndex:byteIndex+4], uint32(sensorValue.Value))
 	}
 }
 
@@ -174,14 +174,16 @@ func NewSensorStorage(config *SensorServerConfig, writeChannel chan *SensorStrea
 		for _, sensor := range group.config.Sensors {
 			sensorType := NewSensorType(sensor.Type)
 			group.streams[sensor.Index] = NewSensorStream(sensor.Index, sensor.Type, sensorType, GetSamplePeriodInMsFromSensorType(sensorType))
+
+			// TODO Check here if the file for today already exists, if so load it.
+			//      Also check if there is a previous file for yesterday, if so load it as well.
 		}
 	}
 
 	// The go-routine that writes data blocks to the file system
 	go func() {
 		for block := range writeChannel {
-			err := storage.WriteStreamBlock(block)
-			if err != nil {
+			if err := storage.WriteStreamBlock(block); err != nil {
 				fmt.Printf("Error writing data block: %v\n", err)
 			}
 		}
@@ -192,55 +194,15 @@ func NewSensorStorage(config *SensorServerConfig, writeChannel chan *SensorStrea
 
 // RegisterSensor registers a new sensor and returns its ID.
 // Note: 'sensorName' should be unique.
-func (s *SensorStorage) RegisterSensor(mac string, sensorName string, sensorType SensorType) (int, int) {
-	if groupIndex, exists := s.macToSensorGroupIndex[mac]; exists {
-		sensorGroup := s.sensorGroups[groupIndex]
-		streamIndex := sensorGroup.config.NameToIndex[sensorName]
-		return groupIndex, streamIndex
-	}
-
-	groupIndex := s.groupConfigMap[mac]
-	if groupIndex < 0 || groupIndex >= len(s.groupConfigList) {
-		return -1, -1 // Invalid store index
-	}
-
-	// Sensor group index
-	groupConfig := s.groupConfigList[groupIndex]
-	s.macToSensorGroupIndex[sensorName] = groupIndex
-
-	// Sensor stream index
-	streamIndex := groupConfig.NameToIndex[sensorName]
-
-	// Frequency is derived from the sensor type
-	sensorFreq := GetSamplePeriodInMsFromSensorType(sensorType)
-
+func (s *SensorStorage) RegisterSensor(groupIndex int32, sensorName string, sensorType SensorType) (int32, int32) {
 	sensorGroup := s.sensorGroups[groupIndex]
-	if sensorGroup == nil {
-		sensorGroup = &SensorGroup{
-			config:  groupConfig,
-			streams: make([]*SensorStream, len(groupConfig.Sensors), len(groupConfig.Sensors)),
-		}
-		s.sensorGroups[groupIndex] = sensorGroup
+	if streamIndex, ok := sensorGroup.config.NameToIndex[sensorName]; ok {
+		return groupIndex, int32(streamIndex)
 	}
-
-	sensorStream := sensorGroup.streams[streamIndex]
-	if sensorStream == nil {
-		sensorStream = &SensorStream{
-			index:      streamIndex,
-			sensorName: sensorName,
-			sensorType: sensorType,
-			sensorFreq: sensorFreq,
-			reference:  time.Time{},
-			current:    nil,
-			previous:   nil,
-		}
-		sensorGroup.streams[streamIndex] = sensorStream
-	}
-
-	return groupIndex, streamIndex
+	return -1, -1
 }
 
-func (s *SensorStorage) WriteSensorValue(groupIndex int, sensorIndex int, packetImmediate bool, packetTimeSync int, sensorValue SensorValue) error {
+func (s *SensorStorage) WriteSensorValue(groupIndex int32, sensorIndex int32, packetImmediate bool, packetTimeSync int32, sensorValue SensorValue) error {
 	// Create or get the data block for the given location and sensor type
 	group := s.sensorGroups[groupIndex]
 	if group == nil {

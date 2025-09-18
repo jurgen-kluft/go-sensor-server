@@ -10,7 +10,7 @@ type SensorServerConfig struct {
 	MaximumStores  int
 	MaximumStreams int
 	Groups         []*SensorGroupConfig
-	StoreMap       map[string]int // map from Mac address to store Index
+	GroupMap       map[string]int // map from Mac address to store Index
 }
 
 func newSensorServerConfig() *SensorServerConfig {
@@ -42,9 +42,9 @@ func DecodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig 
 	decoder.Decode(fields)
 
 	// Create the map from Mac address to store Index
-	object.StoreMap = make(map[string]int)
+	object.GroupMap = make(map[string]int)
 	for _, store := range object.Groups {
-		object.StoreMap[store.Mac] = store.Index
+		object.GroupMap[store.Mac] = store.Index
 	}
 
 	return object
