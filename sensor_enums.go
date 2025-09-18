@@ -29,7 +29,7 @@ const (
 	UV          SensorType = 0x0C // (s16, index)
 	CO          SensorType = 0x0D // (s16, ppm)
 	Vibration   SensorType = 0x0E // (s8,  <=16=none, <=64=low, <=128=medium, <=192=high, <=255=extreme)
-	State       SensorType = 0xA0 // (s32 (u8[4]), sensor model, sensor state)
+	State       SensorType = 0x0F // (s32 (u8[4]), sensor model, sensor state)
 	Unknown     SensorType = 0xFF // Unknown sensor type
 )
 
@@ -58,49 +58,31 @@ func (t SensorFieldType) SizeInBits() int {
 // ToSensorFrequency returns the default frequency (samples per hour) for the given SensorType.
 
 var SensorTypeToSampleFrequencyMap []int32 = []int32{
-	60,
-	60,
-	60,
-	120,
-	60,
-	60,
-	60,
-	60,
-	60,
-	60,
-	3600,
-	7200,
-	60,
-	60,
-	3600,
-	12,
+	60, 60, 60, 120, 60, 60, 60, 60,
+	60, 60, 7200, 7200, 60, 60, 3600, 12,
 }
 
 func GetSamplePeriodInMsFromSensorType(st SensorType) int32 {
-	return 60 * 60 * 1000 / SensorTypeToSampleFrequencyMap[int(st)]
+	index := int(st)
+	if index >= 0 && index < len(SensorTypeToSampleFrequencyMap) {
+		return 60 * 60 * 1000 / SensorTypeToSampleFrequencyMap[index]
+	}
+	return 0
 }
 
 var SensorFieldTypeMap []SensorFieldType = []SensorFieldType{
-	TypeS8,
-	TypeS8,
-	TypeS16,
-	TypeS16,
-	TypeS16,
-	TypeS16,
-	TypeS16,
-	TypeS16,
-	TypeS16,
-	TypeS8,
-	TypeS8,
-	TypeS16,
-	TypeS8,
-	TypeS8,
-	TypeS8,
-	TypeS16,
+	TypeS8, TypeS8, TypeS16, TypeS16,
+	TypeS16, TypeS16, TypeS16, TypeS16,
+	TypeS16, TypeS8, TypeS8, TypeS16,
+	TypeS8, TypeS8, TypeS8, TypeS16,
 }
 
 func GetFieldTypeFromType(st SensorType) SensorFieldType {
-	return SensorFieldTypeMap[int(st)]
+	index := int(st)
+	if index >= 0 && index < len(SensorFieldTypeMap) {
+		return SensorFieldTypeMap[index]
+	}
+	return TypeNone
 }
 
 // String returns the string representation of the SensorType.
@@ -121,12 +103,12 @@ var SensorTypeName []string = []string{
 	"CO",
 	"Vibration",
 	"State",
-	"Unknown",
 }
 
 func (st SensorType) String() string {
-	if int(st) < len(SensorTypeName) {
-		return SensorTypeName[int(st)]
+	index := int(st)
+	if index >= 0 && index < len(SensorTypeName) {
+		return SensorTypeName[index]
 	}
 	return "Unknown"
 }
@@ -148,7 +130,6 @@ var StringToSensorTypeMap map[string]SensorType = map[string]SensorType{
 	"co":          CO,
 	"vibration":   Vibration,
 	"state":       State,
-	"unknown":     Unknown,
 }
 
 func NewSensorType(name string) SensorType {
@@ -168,5 +149,5 @@ func (st SensorType) FromString(name string) SensorType {
 	if st, ok := StringToSensorTypeMap[name]; ok {
 		return st
 	}
-	return State
+	return Unknown
 }
