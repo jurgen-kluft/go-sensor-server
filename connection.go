@@ -17,7 +17,7 @@ var (
 
 // Conn exposes a set of callbacks for the various events that occur on a connection
 type Conn struct {
-	srv               *Server
+	srv               *Server       // The server owning this connection
 	conn              *net.TCPConn  // the raw connection
 	index             int           // to save extra data
 	closeOnce         sync.Once     // close the conn, once, per instance
@@ -25,7 +25,7 @@ type Conn struct {
 	closeChan         chan struct{} // close chanel
 	packetSendChan    chan Packet   // packet send chanel
 	packetReceiveChan chan Packet   // packeet receive chanel
-	sensorGroup       *SensorGroup  // sensor group (device)
+	sensorGroup       *SensorGroup  // sensor group (the device we have connected with)
 }
 
 // ConnCallback is an interface of methods that are used as callbacks on a connection
@@ -120,7 +120,6 @@ func (c *Conn) AsyncWritePacket(p Packet, timeout time.Duration) (err error) {
 	}
 }
 
-// Do it
 func (c *Conn) Do() {
 	if !c.srv.callback.OnConnect(c) {
 		return
