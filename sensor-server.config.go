@@ -1,6 +1,9 @@
 package sensor_server
 
 import (
+	"fmt"
+	"os"
+
 	corepkg "github.com/jurgen-kluft/go-core"
 )
 
@@ -20,7 +23,38 @@ func newSensorServerConfig() *SensorServerConfig {
 	}
 }
 
-func DecodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig {
+func LoadSensorServerConfig(filePath string) (*SensorServerConfig, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// Read all file content
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	fileSize := fileInfo.Size()
+	if fileSize <= 0 || fileSize > 10*1024*1024 {
+		return nil, fmt.Errorf("the size of configuration file is invalid: %v", fileSize)
+	}
+
+	buffer := make([]byte, fileSize)
+	if _, err := file.Read(buffer); err != nil {
+		return nil, err
+	}
+
+	decoder := corepkg.NewJsonDecoder()
+	if decoder.Begin(string(buffer)) {
+		return decodeSensorServerConfig(decoder), nil
+	}
+
+	return nil, fmt.Errorf("invalid configuration file format")
+}
+
+func decodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig {
 	object := newSensorServerConfig()
 	fields := map[string]corepkg.JsonDecode{
 		"storage":  func(decoder *corepkg.JsonDecoder) { object.StoragePath = decoder.DecodeString() },

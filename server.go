@@ -21,13 +21,14 @@ type Server struct {
 }
 
 // NewServer creates a server
-func NewServer(config *Config, callback ConnCallback, protocol Protocol) *Server {
+func NewServer(config *Config, callback ConnCallback, protocol Protocol, sensorStorage *SensorStorage) *Server {
 	return &Server{
-		config:    config,
-		callback:  callback,
-		protocol:  protocol,
-		exitChan:  make(chan struct{}),
-		waitGroup: &sync.WaitGroup{},
+		config:        config,
+		callback:      callback,
+		protocol:      protocol,
+		exitChan:      make(chan struct{}),
+		waitGroup:     &sync.WaitGroup{},
+		sensorStorage: sensorStorage,
 	}
 }
 

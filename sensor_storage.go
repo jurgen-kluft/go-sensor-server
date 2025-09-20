@@ -150,12 +150,12 @@ type SensorStorage struct {
 	blockHeaderWriter io.Writer
 }
 
-func NewSensorStorage(config *SensorServerConfig, writeChannel chan *SensorStreamBlock) *SensorStorage {
+func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 	storage := &SensorStorage{
 		config:          config,
 		macToGroupIndex: make(map[string]int),
 		sensorGroups:    nil,
-		writeChannel:    writeChannel,
+		writeChannel:    make(chan *SensorStreamBlock, 100),
 	}
 	storage.blockHeaderWriter = &storage.blockHeaderBuffer
 
@@ -180,7 +180,7 @@ func NewSensorStorage(config *SensorServerConfig, writeChannel chan *SensorStrea
 
 	// The go-routine that writes data blocks to the file system
 	go func() {
-		for block := range writeChannel {
+		for block := range storage.writeChannel {
 			if err := storage.WriteStreamBlock(block); err != nil {
 				fmt.Printf("Error writing data block: %v\n", err)
 			}
