@@ -58,7 +58,7 @@ func main() {
 	fmt.Println("listening:", listener.Addr())
 
 	// catchs system signal
-	chSig := make(chan os.Signal)
+	chSig := make(chan os.Signal, 1)
 	signal.Notify(chSig, syscall.SIGINT, syscall.SIGTERM)
 	fmt.Println("Signal: ", <-chSig)
 

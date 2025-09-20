@@ -12,23 +12,21 @@ type Config struct {
 }
 
 type Server struct {
-	config        *Config         // server configuration
-	callback      ConnCallback    // message callbacks in connection
-	protocol      Protocol        // customize packet protocol
-	exitChan      chan struct{}   // notify all goroutines to shutdown
-	waitGroup     *sync.WaitGroup // wait for all goroutines
-	sensorStorage *SensorStorage  // sensor storage
+	config    *Config         // server configuration
+	callback  ConnCallback    // message callbacks in connection
+	protocol  Protocol        // customize packet protocol
+	exitChan  chan struct{}   // notify all goroutines to shutdown
+	waitGroup *sync.WaitGroup // wait for all goroutines
 }
 
 // NewServer creates a server
-func NewServer(config *Config, callback ConnCallback, protocol Protocol, sensorStorage *SensorStorage) *Server {
+func NewServer(config *Config, callback ConnCallback, protocol Protocol) *Server {
 	return &Server{
-		config:        config,
-		callback:      callback,
-		protocol:      protocol,
-		exitChan:      make(chan struct{}),
-		waitGroup:     &sync.WaitGroup{},
-		sensorStorage: sensorStorage,
+		config:    config,
+		callback:  callback,
+		protocol:  protocol,
+		exitChan:  make(chan struct{}),
+		waitGroup: &sync.WaitGroup{},
 	}
 }
 

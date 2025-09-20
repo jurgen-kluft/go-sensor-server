@@ -18,6 +18,11 @@ type SensorServerCallback struct {
 	store  *sensor_server.SensorStorage
 }
 
+func newSensorServerCallback(config *sensor_server.SensorServerConfig) *SensorServerCallback {
+	store := sensor_server.NewSensorStorage(config)
+	return &SensorServerCallback{config: config, store: store}
+}
+
 func (this *SensorServerCallback) OnConnect(c *sensor_server.Conn) bool {
 	addr := c.GetRawConn().RemoteAddr()
 	fmt.Println("OnConnect:", addr)
@@ -70,9 +75,8 @@ func main() {
 	sensorServerConfig, err := sensor_server.LoadSensorServerConfig("sensor-server.config.json")
 	checkError(err)
 
-	sensorServerCallback := &SensorServerCallback{}
 	sensorPacketProtocol := &SensorPacketProtocol{}
-	sensorStorage := sensor_server.NewSensorStorage(sensorServerConfig)
+	sensorServerCallback := newSensorServerCallback(sensorServerConfig)
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%d", sensorServerConfig.TcpPort))
 	checkError(err)
@@ -80,7 +84,7 @@ func main() {
 	checkError(err)
 
 	config := &sensor_server.Config{PacketSendChanLimit: 20, PacketReceiveChanLimit: 20}
-	srv := sensor_server.NewServer(config, sensorServerCallback, sensorPacketProtocol, sensorStorage)
+	srv := sensor_server.NewServer(config, sensorServerCallback, sensorPacketProtocol)
 
 	// starts service
 	go srv.Start(listener, time.Second)
