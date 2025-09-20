@@ -25,7 +25,6 @@ type Conn struct {
 	closeChan         chan struct{} // close chanel
 	packetSendChan    chan Packet   // packet send chanel
 	packetReceiveChan chan Packet   // packeet receive chanel
-	sensorGroup       *SensorGroup  // sensor group (the device we have connected with)
 }
 
 // ConnCallback is an interface of methods that are used as callbacks on a connection

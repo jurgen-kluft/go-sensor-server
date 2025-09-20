@@ -8,7 +8,7 @@ import (
 // Packet structure
 // {
 //     u8  length;   // Number of words in the packet
-//     u24 sequence; // Sequence number of the packet
+//     u24 timesync; // TimeSync value of the packet
 //
 //     // sensor value 1
 //     u8 type;
@@ -44,13 +44,13 @@ func (v *SensorValue) IsZero() bool {
 }
 
 func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
-	if len(data) < 5 {
-		return SensorPacket{}, fmt.Errorf("data too short")
+	if len(data) < 6 {
+		return SensorPacket{}, fmt.Errorf("sensor packet, size too small")
 	}
 
 	pkt := SensorPacket{
 		Length:   uint16(data[0] * 2),
-		TimeSync: int32(data[1] | (data[2] << 8) | (data[3] << 16)),
+		TimeSync: int32(data[1]) | (int32(data[2]) << 8) | (int32(data[3]) << 16),
 		Values:   nil,
 	}
 	pkt.Immediate = (pkt.TimeSync & 0x800000) != 0
@@ -60,7 +60,7 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 		return pkt, fmt.Errorf("data length mismatch, %d < %d", len(data), pkt.Length)
 	}
 
-	offset := 3
+	offset := 4
 
 	// Compute the number of sensor values in the packet.
 	numberOfValues := 0
@@ -73,7 +73,7 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 	pkt.Values = make([]SensorValue, 0, numberOfValues)
 
 	// Now decode the values.
-	offset = 3
+	offset = 4
 
 	for offset <= int(pkt.Length)-2 {
 		value := SensorValue{SensorType: SensorType(data[offset])}

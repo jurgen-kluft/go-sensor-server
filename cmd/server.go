@@ -14,39 +14,39 @@ import (
 )
 
 type Callback struct {
-	// Free indices used for connections
 	config *sensor_server.SensorServerConfig
 	store  *sensor_server.SensorStorage
 }
 
 func (this *Callback) OnConnect(c *sensor_server.Conn) bool {
 	addr := c.GetRawConn().RemoteAddr()
-	c.SetIndex(-1)
 	fmt.Println("OnConnect:", addr)
+	c.SetIndex(-1)
 	return true
 }
 
 func (this *Callback) OnMessage(c *sensor_server.Conn, p sensor_server.Packet) bool {
 	if c.GetIndex() == -1 {
-		// The first message is a registration message, it contains the 'mac' address
+		// The first message is the registration message, it contains the 'mac' address
 		// of the sensor device. This mac address is used to identify the sensor store
 		// that is listed in the JSON configuration file.
 		fmt.Printf("OnMessage (register):[%v] [%v]\n", GetLength(p), string(GetBody(p)))
 		mac := string(GetBody(p))
-		groupIndex := this.config.GroupMap[mac]
-		c.SetIndex(groupIndex)
+		if groupIndex, exists := this.config.DevicesMap[mac]; exists {
+			c.SetIndex(groupIndex)
+		} else {
+			return false
+		}
 	} else {
-		fmt.Printf("OnMessage:[%v] [%v]\n", GetLength(p), string(GetBody(p)))
+		fmt.Printf("OnMessage (packet):[%v] [%v]\n", GetLength(p), string(GetBody(p)))
 
 		groupIndex := int32(c.GetIndex())
 
 		// Loop over the sensor values, since every sensor value has its own sensor data stream
 		if sensorPacket, error := sensor_server.DecodeNetworkPacket(p.Body); error == nil {
 			for _, sensorValue := range sensorPacket.Values {
-				// Get sensor type from the packet
-				groupIndex, streamIndex := this.store.RegisterSensor(groupIndex, "sensor1", sensorValue.SensorType)
+				groupIndex, streamIndex := this.store.RegisterSensor(groupIndex, sensorValue.SensorType)
 				if groupIndex >= 0 && streamIndex >= 0 {
-					// WriteSensorValue(groupIndex int, sensorIndex int, packetImmediate bool, packetTimeSync int, sensorValue SensorValue) error {
 					if err := this.store.WriteSensorValue(groupIndex, streamIndex, sensorPacket.Immediate, sensorPacket.TimeSync, sensorValue); err != nil {
 						fmt.Printf("Error writing sensor value: %v\n", err)
 					}

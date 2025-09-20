@@ -14,21 +14,18 @@ import (
 // One sensor store for [DeviceLocation | SensorType]
 // DeviceLocation is associated with
 type SensorStream struct {
-	index      int        // Unique index for this sensor
-	sensorName string     // List of sensor identifiers
-	sensorType SensorType // List of sensor types
-	sensorFreq int32      // Sample frequency per sensor type
-	reference  time.Time  // Reference time for this stream
+	group      *SensorGroup // The parent group (device)
+	sensorName string       // List of sensor identifiers
+	sensorType SensorType   // List of sensor types
+	reference  time.Time    // Reference time for this stream
 	current    *SensorStreamBlock
 	previous   *SensorStreamBlock
 }
 
-func NewSensorStream(index int, sensorName string, sensorType SensorType, sensorFreq int32) *SensorStream {
+func NewSensorStream(group *SensorGroup, sensorType SensorType) *SensorStream {
 	return &SensorStream{
-		index:      index,
-		sensorName: sensorName,
+		group:      group,
 		sensorType: sensorType,
-		sensorFreq: sensorFreq,
 		reference:  time.Time{},
 		current:    nil,
 		previous:   nil,
@@ -47,12 +44,12 @@ func NewSensorStream(index int, sensorName string, sensorType SensorType, sensor
 type SensorStreamBlock struct {
 	Stream       *SensorStream   // The parent stream
 	Time         time.Time       // Time (Year, Month, Day, at zero hour)
-	SensorType   SensorType      // Type of sensor (Temperature, Humidity, etc)
 	SampleType   SensorFieldType // Type of samples in this block
 	SampleFreq   int32           // Unit = samples per hour
 	SamplePeriod int32           // Milliseconds between samples
 	SampleCount  int32           // Number of samples in this block
 	LastSample   SensorValue     // Last sample value
+	isModified   bool            // Indicates if the block has been modified/updated
 	Buffer       []byte          // Buffer to hold the samples
 }
 
@@ -60,7 +57,7 @@ const (
 	SensorDataBlockHeaderSize = 64 // Size of the header in bytes
 )
 
-func NewSensorStreamBlock(stream *SensorStream, sampleType SensorFieldType, sampleFreq int32) *SensorStreamBlock {
+func NewSensorStreamBlock(stream *SensorStream, sampleType SensorFieldType, sampleFreq int32, samplePeriod int32) *SensorStreamBlock {
 	// Construct the correct time for the start of this block
 	t := time.Now()
 	blockTime := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
@@ -71,11 +68,15 @@ func NewSensorStreamBlock(stream *SensorStream, sampleType SensorFieldType, samp
 	blockSizeInBytes := (int(sampleFreq*24)*int(sampleType.SizeInBits()) + 7) / 8
 	blockSizeInBytes = blockSizeInBytes + SensorDataBlockHeaderSize
 	block := &SensorStreamBlock{
-		Stream:     stream,
-		Time:       blockTime,
-		SampleType: sampleType,
-		SampleFreq: sampleFreq,
-		Buffer:     make([]byte, blockSizeInBytes),
+		Stream:       stream,
+		Time:         blockTime,
+		SampleType:   sampleType,
+		SampleFreq:   sampleFreq,
+		SamplePeriod: samplePeriod,
+		SampleCount:  0,
+		LastSample:   SensorValue{},
+		isModified:   false,
+		Buffer:       make([]byte, blockSizeInBytes),
 	}
 
 	binary.LittleEndian.PutUint32(block.Buffer, uint32(blockTime.Year()))
@@ -128,52 +129,49 @@ func (s *SensorStreamBlock) IsDone() bool {
 
 // SensorGroup represents a group of sensors, typically associated with a device
 type SensorGroup struct {
-	config  *SensorGroupConfig // Configuration for this sensor group
-	streams []*SensorStream    // Active data streams
+	config        *SensorGroupConfig // Configuration for this sensor group
+	sensorStreams []*SensorStream    // Active data streams
 }
 
 func NewSensorGroup(config *SensorGroupConfig) *SensorGroup {
 	return &SensorGroup{
-		config:  config,
-		streams: make([]*SensorStream, len(config.Sensors), len(config.Sensors)),
+		config:        config,
+		sensorStreams: make([]*SensorStream, NumberOfSensorTypes()),
 	}
 }
 
 type SensorStorage struct {
-	config                *SensorServerConfig     // Configuration for the sensor storage
-	groupConfigList       []*SensorGroupConfig    // List of sensor group configurations
-	groupConfigMap        map[string]int          // map from mac address to store index
-	macToSensorGroupIndex map[string]int          // Map from sensor name to ID
-	sensorGroups          []*SensorGroup          // Active groups (devices)
-	writeChannel          chan *SensorStreamBlock // Channel for writing data blocks
-	blockHeaderBuffer     bytes.Buffer
-	blockHeaderWriter     io.Writer
+	config            *SensorServerConfig     // Configuration for the sensor storage
+	groupConfigList   []*SensorGroupConfig    // List of sensor group configurations
+	macToGroupIndex   map[string]int          // Map from sensor name to ID
+	sensorGroups      []*SensorGroup          // Active groups (devices)
+	writeChannel      chan *SensorStreamBlock // Channel for writing data blocks
+	blockHeaderBuffer bytes.Buffer
+	blockHeaderWriter io.Writer
 }
 
 func NewSensorStorage(config *SensorServerConfig, writeChannel chan *SensorStreamBlock) *SensorStorage {
 	storage := &SensorStorage{
-		config:                config,
-		macToSensorGroupIndex: make(map[string]int),
-		sensorGroups:          make([]*SensorGroup, config.MaximumStores, config.MaximumStores),
-		writeChannel:          writeChannel,
+		config:          config,
+		macToGroupIndex: make(map[string]int),
+		sensorGroups:    nil,
+		writeChannel:    writeChannel,
 	}
 	storage.blockHeaderWriter = &storage.blockHeaderBuffer
 
-	sensorListMaxSize := 0
-	for i, _ := range storage.sensorGroups {
-		group := NewSensorGroup(config.Groups[i])
-		storage.sensorGroups[i] = group
-		if (group.config.Index + 1) > sensorListMaxSize {
-			sensorListMaxSize = group.config.Index + 1
-		}
+	storage.macToGroupIndex = make(map[string]int, len(config.Devices))
+	storage.sensorGroups = make([]*SensorGroup, len(config.Devices))
+	for i, groupConfig := range config.Devices {
+		storage.sensorGroups[i] = NewSensorGroup(groupConfig)
+		storage.macToGroupIndex[groupConfig.Mac] = i
 	}
 
+	// Initialize the sensor streams for each group
 	for _, group := range storage.sensorGroups {
-		storage.groupConfigMap[group.config.Mac] = group.config.Index
-		group.streams = make([]*SensorStream, sensorListMaxSize, sensorListMaxSize)
-		for _, sensor := range group.config.Sensors {
-			sensorType := NewSensorType(sensor.Type)
-			group.streams[sensor.Index] = NewSensorStream(sensor.Index, sensor.Type, sensorType, GetSamplePeriodInMsFromSensorType(sensorType))
+		group.sensorStreams = make([]*SensorStream, NumberOfSensorTypes())
+		for _, sensorType := range SensorTypeArray() {
+			sensorStream := NewSensorStream(group, sensorType)
+			group.sensorStreams[sensorType.Index()] = sensorStream
 
 			// TODO Check here if the file for today already exists, if so load it.
 			//      Also check if there is a previous file for yesterday, if so load it as well.
@@ -192,65 +190,81 @@ func NewSensorStorage(config *SensorServerConfig, writeChannel chan *SensorStrea
 	return storage
 }
 
-// RegisterSensor registers a new sensor and returns its ID.
-// Note: 'sensorName' should be unique.
-func (s *SensorStorage) RegisterSensor(groupIndex int32, sensorName string, sensorType SensorType) (int32, int32) {
+// RegisterSensor registers a sensor and returns its ID.
+// Note: If this sensor type was not configured as part of the sensor group, -1, -1 is returned.
+func (s *SensorStorage) RegisterSensor(groupIndex int32, sensorType SensorType) (int32, int32) {
 	sensorGroup := s.sensorGroups[groupIndex]
-	if streamIndex, ok := sensorGroup.config.NameToIndex[sensorName]; ok {
-		return groupIndex, int32(streamIndex)
+	sensorIndex := sensorType.Index()
+	if sensorGroup.sensorStreams[sensorIndex] != nil {
+		return groupIndex, int32(sensorIndex)
 	}
 	return -1, -1
 }
 
-func (s *SensorStorage) WriteSensorValue(groupIndex int32, sensorIndex int32, packetImmediate bool, packetTimeSync int32, sensorValue SensorValue) error {
+func (s *SensorStorage) WriteSensorValue(groupIndex int32, sensorIndex int32, isPacketTimeSync bool, packetTimeSync int32, sensorValue SensorValue) error {
 	// Create or get the data block for the given location and sensor type
 	group := s.sensorGroups[groupIndex]
 	if group == nil {
-		return fmt.Errorf("sensor group %d not registered", groupIndex)
+		return fmt.Errorf("sensor group is nil")
 	}
 
-	stream := group.streams[sensorIndex]
-	if stream == nil {
-		return fmt.Errorf("sensor stream %d not registered in group %d", sensorIndex, groupIndex)
+	sensorStream := group.sensorStreams[sensorIndex]
+	if sensorStream == nil {
+		return fmt.Errorf("sensor sensorStream for %s is nil, not registered in group %s", SensorType(sensorIndex).String(), group.config.Name)
 	}
 
-	if stream.current == nil {
-		stream.current = NewSensorStreamBlock(stream, SensorFieldType(stream.sensorType), stream.sensorFreq)
+	if sensorStream.current == nil {
+		sampleFreq := GetSampleFrequencyFromSensorType(sensorStream.sensorType)
+		samplePeriod := GetSamplePeriodInMsFromSensorType(sensorStream.sensorType)
+		sensorStream.current = NewSensorStreamBlock(sensorStream, SensorFieldType(sensorStream.sensorType), sampleFreq, samplePeriod)
 	}
 
 	// If the day has changed, finalize the current block and start a new one
 	now := time.Now()
-	if !stream.current.Time.Equal(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())) {
+	if !sensorStream.current.Time.Equal(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())) {
 		// Day has changed
-		if stream.current != nil {
-			s.writeChannel <- stream.current
+		if sensorStream.current != nil {
+			s.writeChannel <- sensorStream.current
 		}
-		stream.previous = stream.current
-		stream.current = NewSensorStreamBlock(stream, SensorFieldType(stream.sensorType), stream.sensorFreq)
+		sensorStream.previous = sensorStream.current
+		sampleFreq := GetSampleFrequencyFromSensorType(sensorStream.sensorType)
+		samplePeriod := GetSamplePeriodInMsFromSensorType(sensorStream.sensorType)
+		sensorStream.current = NewSensorStreamBlock(sensorStream, SensorFieldType(sensorStream.sensorType), sampleFreq, samplePeriod)
 	}
 
 	// Figure out the SensorStreamBlock:
 	//   We should know the reference time of this session, with (packetTimeSync / 40) seconds accuracy.
 	//   With that information we can figure out the SensorStreamBlock and the SampleIndex within that block.
 	//   We only need to keep two SensorDataBlocks in memory, current and previous.
-	if packetImmediate {
-		// Immediate packets always go to the current block but they also set the reference time when
-		// the reference time was not set yet.
-		if stream.reference.IsZero() {
-			now := time.Now()
-			stream.reference = now.Add(-time.Duration(packetTimeSync*25) * time.Millisecond)
+	packetTime := time.Now()
+	if isPacketTimeSync {
+		// When this packet was marked as a time sync packet, we can update the reference time.
+		// Also the packet time is the reference time, however the sender may have a guesstimate
+		// on the transfer time of the packet, so we subtract that from the current time.
+		sensorStream.reference = packetTime.Add(-time.Duration(packetTimeSync*25) * time.Millisecond)
+	} else {
+		// If we do not have a reference time yet then we are unable to figure out the time for this packet.
+		// So we can do nothing else then dropping this packet.
+		if sensorStream.reference.IsZero() {
+			return fmt.Errorf("sensor stream reference time is zero, cannot handle non-immediate packet")
 		}
-
+		packetTime = sensorStream.reference.Add(time.Duration(packetTimeSync*25) * time.Millisecond)
 	}
 
-	// Write the sensor value to the block's buffer
-	stream.current.WriteSensorValue(stream.reference, packetTimeSync, sensorValue)
-	if stream.current.IsDone() {
-		s.writeChannel <- stream.current // Send the full block to the write channel
-		stream.previous = stream.current // Move current to previous
-		stream.current = nil             // Clear the current block to create a new one next time
+	if packetTime.Before(sensorStream.current.Time) {
+		// Write to the previous block if it exists and the time fits
+		if sensorStream.previous != nil && packetTime.After(sensorStream.previous.Time) {
+			sensorStream.previous.WriteSensorValue(sensorStream.reference, packetTimeSync, sensorValue)
+		}
+	} else {
+		// Write the sensor value to the current block's buffer
+		sensorStream.current.WriteSensorValue(sensorStream.reference, packetTimeSync, sensorValue)
+		if sensorStream.current.IsDone() {
+			s.writeChannel <- sensorStream.current       // Send the full block to the write channel
+			sensorStream.previous = sensorStream.current // Move current to previous
+			sensorStream.current = nil                   // Clear the current block to create a new one next time
+		}
 	}
-
 	return nil
 }
 
@@ -261,9 +275,12 @@ func (s *SensorStorage) WriteStreamBlock(stream *SensorStreamBlock) error {
 		return nil // Nothing to write
 	}
 
-	// Open the file for writing, append-only
-	sensorStorePath := path.Join(s.config.StoragePath, stream.Stream.sensorName, fmt.Sprintf("sensor_data_%04d_%02d_%02d.dat", stream.Time.Year(), stream.Time.Month(), stream.Time.Day()))
-	file, err := os.OpenFile(sensorStorePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	group := stream.Stream.group
+
+	// Open the file for writing, fully overwrite if it exists
+	storePathFilename := fmt.Sprintf("%04d_%02d_%02d.data", stream.Time.Year(), stream.Time.Month(), stream.Time.Day())
+	storeFullFilepath := path.Join(s.config.StoragePath, group.config.Name, stream.Stream.sensorName, storePathFilename)
+	file, err := os.OpenFile(storeFullFilepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}

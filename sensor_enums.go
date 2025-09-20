@@ -14,24 +14,38 @@ const (
 type SensorType uint8
 
 const (
-	Temperature SensorType = 0x00 // (s8, °C)
-	Humidity    SensorType = 0x01 // (s8, %)
-	Pressure    SensorType = 0x02 // (s16, hPa)
-	Light       SensorType = 0x03 // (s16, lux)
-	CO2         SensorType = 0x04 // (s16, ppm)
-	VOC         SensorType = 0x05 // (s16, ppm)
-	PM1_0       SensorType = 0x06 // (s16, µg/m3)
-	PM2_5       SensorType = 0x07 // (s16, µg/m3)
-	PM10        SensorType = 0x08 // (s16, µg/m3)
-	Noise       SensorType = 0x09 // (s16, dB)
-	Presence    SensorType = 0x0A // (s8, 0-1)
-	Distance    SensorType = 0x0B // (s16, cm)
-	UV          SensorType = 0x0C // (s16, index)
-	CO          SensorType = 0x0D // (s16, ppm)
-	Vibration   SensorType = 0x0E // (s8,  <=16=none, <=64=low, <=128=medium, <=192=high, <=255=extreme)
-	State       SensorType = 0x0F // (s32 (u8[4]), sensor model, sensor state)
-	Unknown     SensorType = 0xFF // Unknown sensor type
+	Unknown     SensorType = 0x00 // Unknown sensor type
+	Temperature SensorType = 0x01 // (s8, °C)
+	Humidity    SensorType = 0x02 // (s8, %)
+	Pressure    SensorType = 0x03 // (s16, hPa)
+	Light       SensorType = 0x04 // (s16, lux)
+	CO2         SensorType = 0x05 // (s16, ppm)
+	VOC         SensorType = 0x06 // (s16, ppm)
+	PM1_0       SensorType = 0x07 // (s16, µg/m3)
+	PM2_5       SensorType = 0x08 // (s16, µg/m3)
+	PM10        SensorType = 0x09 // (s16, µg/m3)
+	Noise       SensorType = 0x0A // (s16, dB)
+	Presence    SensorType = 0x0B // (s8, 0-1)
+	Distance    SensorType = 0x0C // (s16, cm)
+	UV          SensorType = 0x0D // (s16, index)
+	CO          SensorType = 0x0E // (s16, ppm)
+	Vibration   SensorType = 0x0F // (s8,  <=16=none, <=64=low, <=128=medium, <=192=high, <=255=extreme)
+	State       SensorType = 0x10 // (s32 (u8[4]), sensor model, sensor state)
 )
+
+func SensorTypeArray() []SensorType {
+	return []SensorType{
+		Unknown,
+		Temperature, Humidity, Pressure, Light,
+		CO2, VOC, PM1_0, PM2_5,
+		PM10, Noise, Presence, Distance,
+		UV, CO, Vibration, State,
+	}
+}
+
+func NumberOfSensorTypes() int {
+	return int(State) + 1
+}
 
 type SensorState uint8
 
@@ -58,12 +72,22 @@ func (t SensorFieldType) SizeInBits() int {
 // ToSensorFrequency returns the default frequency (samples per hour) for the given SensorType.
 
 var SensorTypeToSampleFrequencyMap []int32 = []int32{
-	60, 60, 60, 120, 60, 60, 60, 60,
-	60, 60, 7200, 7200, 60, 60, 3600, 12,
+	60, 12, 12, 120,
+	60, 30, 30, 30,
+	30, 60, 7200, 7200,
+	30, 30, 3600, 12,
+}
+
+func GetSampleFrequencyFromSensorType(st SensorType) int32 {
+	index := st.Index()
+	if index >= 0 && index < len(SensorTypeToSampleFrequencyMap) {
+		return SensorTypeToSampleFrequencyMap[index]
+	}
+	return 0
 }
 
 func GetSamplePeriodInMsFromSensorType(st SensorType) int32 {
-	index := int(st)
+	index := st.Index()
 	if index >= 0 && index < len(SensorTypeToSampleFrequencyMap) {
 		return 60 * 60 * 1000 / SensorTypeToSampleFrequencyMap[index]
 	}
@@ -78,7 +102,7 @@ var SensorFieldTypeMap []SensorFieldType = []SensorFieldType{
 }
 
 func GetFieldTypeFromType(st SensorType) SensorFieldType {
-	index := int(st)
+	index := st.Index()
 	if index >= 0 && index < len(SensorFieldTypeMap) {
 		return SensorFieldTypeMap[index]
 	}
@@ -87,26 +111,14 @@ func GetFieldTypeFromType(st SensorType) SensorFieldType {
 
 // String returns the string representation of the SensorType.
 var SensorTypeName []string = []string{
-	"Temperature",
-	"Humidity",
-	"Pressure",
-	"Light",
-	"CO2",
-	"VOC",
-	"PM1.0",
-	"PM2.5",
-	"PM10",
-	"Noise",
-	"Presence",
-	"Distance",
-	"UV",
-	"CO",
-	"Vibration",
-	"State",
+	"Temperature", "Humidity", "Pressure", "Light",
+	"CO2", "VOC", "PM1.0", "PM2.5",
+	"PM10", "Noise", "Presence", "Distance",
+	"UV", "CO", "Vibration", "State",
 }
 
 func (st SensorType) String() string {
-	index := int(st)
+	index := st.Index()
 	if index >= 0 && index < len(SensorTypeName) {
 		return SensorTypeName[index]
 	}
@@ -138,6 +150,10 @@ func NewSensorType(name string) SensorType {
 		return st
 	}
 	return Unknown
+}
+
+func (st SensorType) Index() int {
+	return int(st)
 }
 
 func (st SensorType) IsValid() bool {

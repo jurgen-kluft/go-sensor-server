@@ -13,6 +13,10 @@ func GetLength(p sensor_server.Packet) uint32 {
 	return binary.BigEndian.Uint32(p.Body[0:1]) << 1
 }
 
+func GetTimeSync(p sensor_server.Packet) uint32 {
+	return binary.BigEndian.Uint32(p.Body[1:3])
+}
+
 func GetBody(this sensor_server.Packet) []byte {
 	return this.Body[4:]
 }
