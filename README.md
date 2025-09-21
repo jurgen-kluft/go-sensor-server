@@ -8,6 +8,11 @@ Some notes:
 - Data is very minimal and it should be quite easy to load/use it in a visualization tool
 - Snappy is used upon writing, and reading, data to/from disk.
 
+## Status
+
+- Implemention is quite done, there is a simple tcp-server that writes the sensor packets to disk.
+  Status: Beta version, needs testing.
+
 ## Data Format
 
 Example for a Tempature sensor:
