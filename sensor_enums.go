@@ -14,7 +14,7 @@ const (
 type SensorType uint8
 
 const (
-	Unknown     SensorType = 0x00 // Unknown sensor type
+	Unknown     SensorType = 0    // Unknown sensor type
 	Temperature SensorType = 0x01 // (s8, °C)
 	Humidity    SensorType = 0x02 // (s8, %)
 	Pressure    SensorType = 0x03 // (s16, hPa)
@@ -34,19 +34,21 @@ const (
 	MacAddress  SensorType = 0x11 // (u64, MAC address)
 )
 
-func SensorTypeArray() []SensorType {
-	return []SensorType{
-		Unknown,
-		Temperature, Humidity, Pressure, Light,
-		CO2, VOC, PM1_0, PM2_5,
-		PM10, Noise, Presence, Distance,
-		UV, CO, Vibration, State,
-		MacAddress,
-	}
+var SensorTypes []SensorType = []SensorType{
+	Unknown,
+	Temperature, Humidity, Pressure, Light,
+	CO2, VOC, PM1_0, PM2_5,
+	PM10, Noise, Presence, Distance,
+	UV, CO, Vibration, State,
+	MacAddress,
 }
 
-func NumberOfSensorTypes() int {
-	return int(State) + 1
+func (t SensorType) SizeInBits() int {
+	field := GetFieldTypeFromType(t)
+	if field != TypeNone {
+		return field.SizeInBits()
+	}
+	return 0
 }
 
 type SensorState uint8

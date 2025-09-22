@@ -81,7 +81,7 @@ type Conn struct {
 	sync.Mutex
 	Opts        *Options
 	RawConn     net.Conn
-	UserData    int
+	UserData    int32
 	sendBufList chan []byte
 	closed      chan struct{}
 	state       int32
@@ -105,6 +105,7 @@ func NewConn(opts *Options) *Conn {
 	}
 	c := &Conn{
 		Opts:        opts,
+		UserData:    -1,
 		sendBufList: make(chan []byte, opts.SendBufListLen),
 		closed:      make(chan struct{}),
 		state:       connStateNormal,

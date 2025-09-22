@@ -10,6 +10,7 @@ import (
 // {
 //     u8  length;    // Number of words in the packet
 //     u8  version;   // Packet version (currently 1)
+//     u16 id;        // Fixed ID 0xA5C3
 //     u32 timesync;  // TimeSync value of the packet (bit 31 indicates if this packet is a time-sync packet)
 //
 //     // sensor value 1
@@ -28,22 +29,25 @@ import (
 const (
 	SensorPacketLengthOffset  = 0
 	SensorPacketVersionOffset = 1
-	SensorPacketTimeOffset    = 2
-	SensorPacketHeaderSize    = 1 + 1 + 4 // length, version, time-sync
+	SensorPacketIdOffset      = 2
+	SensorPacketTimeOffset    = 4
+	SensorPacketHeaderSize    = 1 + 1 + 2 + 4 // length, version, time-sync
+	SensorPacketId            = 0xA5C3
 )
 
 type SensorPacket struct {
-	Length    uint16
-	Version   uint8
-	TimeSync  int32
-	Immediate bool
-	Values    []SensorValue
+	Length     uint16
+	Version    uint8
+	Id         uint16
+	TimeSync   int32
+	IsTimeSync bool
+	Values     []SensorValue
 }
 
 type SensorValue struct {
 	SensorType SensorType
 	FieldType  SensorFieldType
-	Value      int32
+	Value      int64
 }
 
 func (v *SensorValue) IsZero() bool {
@@ -58,13 +62,13 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 	pkt := SensorPacket{
 		Length:   uint16(data[SensorPacketLengthOffset] * 2),
 		Version:  uint8(data[SensorPacketVersionOffset]),
+		Id:       uint16(data[SensorPacketIdOffset]) | (uint16(data[SensorPacketIdOffset+1]) << 8),
 		TimeSync: int32(data[SensorPacketTimeOffset]) | (int32(data[SensorPacketTimeOffset+1]) << 8) | (int32(data[SensorPacketTimeOffset+2]) << 16) | (int32(data[SensorPacketTimeOffset+3]) << 24),
 		Values:   nil,
 	}
 
 	if pkt.Version == 1 {
-
-		pkt.Immediate = (pkt.TimeSync & 0x800000) != 0
+		pkt.IsTimeSync = (pkt.TimeSync & 0x800000) != 0
 		pkt.TimeSync = pkt.TimeSync & 0x7FFFFF
 
 		if len(data) < int(pkt.Length) {
@@ -95,18 +99,22 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 			// depending on FieldType, read the appropriate value.
 			// the written values are in little-endian format
 			switch value.FieldType {
-			case TypeS8:
-				value.Value = int32(data[offset])
+			case TypeS8, TypeU8:
+				value.Value = int64(data[offset])
 				pkt.Values = append(pkt.Values, value)
 				offset += 1
-			case TypeS16:
-				value.Value = int32(binary.LittleEndian.Uint16(data[offset : offset+2]))
+			case TypeS16, TypeU16:
+				value.Value = int64(binary.LittleEndian.Uint16(data[offset : offset+2]))
 				pkt.Values = append(pkt.Values, value)
 				offset += 2
-			case TypeS32:
-				value.Value = int32(binary.LittleEndian.Uint32(data[offset : offset+4]))
+			case TypeS32, TypeU32:
+				value.Value = int64(binary.LittleEndian.Uint32(data[offset : offset+4]))
 				pkt.Values = append(pkt.Values, value)
 				offset += 4
+			case TypeS64, TypeU64:
+				value.Value = int64(binary.LittleEndian.Uint64(data[offset : offset+8]))
+				pkt.Values = append(pkt.Values, value)
+				offset += 8
 			}
 		}
 		return pkt, nil
@@ -137,8 +145,11 @@ func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
 
 	data[SensorPacketLengthOffset] = uint8(length / 2)
 	data[SensorPacketVersionOffset] = pkt.Version
+	data[SensorPacketIdOffset] = uint8(pkt.Id & 0xFF)
+	data[SensorPacketIdOffset+1] = uint8((pkt.Id >> 8) & 0xFF)
+	// Write the time-sync value
 	timeSync := pkt.TimeSync & 0x7FFFFF
-	if pkt.Immediate {
+	if pkt.IsTimeSync {
 		timeSync = timeSync | 0x800000
 	}
 	data[SensorPacketTimeOffset] = uint8(timeSync & 0xFF)
