@@ -59,7 +59,7 @@ func decodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig 
 	fields := map[string]corepkg.JsonDecode{
 		"storage":  func(decoder *corepkg.JsonDecoder) { object.StoragePath = decoder.DecodeString() },
 		"tcp_port": func(decoder *corepkg.JsonDecoder) { object.TcpPort = int(decoder.DecodeInt32()) },
-		"groups": func(decoder *corepkg.JsonDecoder) {
+		"devices": func(decoder *corepkg.JsonDecoder) {
 			object.Devices = make([]*SensorGroupConfig, 0, 4)
 			for !decoder.ReadUntilArrayEnd() {
 				object.Devices = append(object.Devices, newSensorStoreConfig())
@@ -93,8 +93,8 @@ func newSensorStoreConfig() *SensorGroupConfig {
 
 func decodeSensorStoreConfig(decoder *corepkg.JsonDecoder, object *SensorGroupConfig) {
 	fields := map[string]corepkg.JsonDecode{
-		"Mac":  func(decoder *corepkg.JsonDecoder) { object.Mac = decoder.DecodeString() },
-		"Name": func(decoder *corepkg.JsonDecoder) { object.Name = decoder.DecodeString() },
+		"mac":  func(decoder *corepkg.JsonDecoder) { object.Mac = decoder.DecodeString() },
+		"name": func(decoder *corepkg.JsonDecoder) { object.Name = decoder.DecodeString() },
 	}
 	decoder.Decode(fields)
 }
