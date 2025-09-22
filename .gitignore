@@ -1,0 +1,29 @@
+#ignore all files
+*
+!*/
+
+target/
+
+#except the following files
+!.gitignore
+
+!*.cpp
+!*.hpp
+!*.c
+!*.h
+!*.inl
+
+!*.go
+!*.md
+
+!*.json
+!*.txt
+!LICENSE
+
+!*.pl
+!*.py
+
+!*.ini
+!*.bat
+
+#except the following folders
