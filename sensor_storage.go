@@ -59,7 +59,7 @@ const (
 	SensorDataBlockHeaderSize = 64 // Size of the header in bytes
 )
 
-func newSensorStreamBlock(stream *sensorStream, sampleType SensorFieldType, sampleFreq int32, samplePeriod int32) *sensorStreamBlock {
+func newSensorStreamBlock(stream *sensorStream, sampleType SensorFieldType, sampleFreq int32, samplePeriod int32, content []byte) *sensorStreamBlock {
 	// Construct the correct time for the start of this block
 	t := time.Now()
 	blockTime := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
@@ -76,18 +76,33 @@ func newSensorStreamBlock(stream *sensorStream, sampleType SensorFieldType, samp
 		SampleFreq:   sampleFreq,
 		SamplePeriod: samplePeriod,
 		LastSample:   SensorValue{},
-		Content:      make([]byte, blockSizeInBytes),
+		Content:      nil,
 		isModified:   atomic.Int32{},
 	}
 
-	binary.LittleEndian.PutUint32(block.Content, uint32(blockTime.Year()))
-	binary.LittleEndian.PutUint32(block.Content[4:], uint32(blockTime.Month()))
-	binary.LittleEndian.PutUint32(block.Content[8:], uint32(blockTime.Day()))
-	binary.LittleEndian.PutUint32(block.Content[12:], uint32(block.SampleType))
-	binary.LittleEndian.PutUint32(block.Content[16:], uint32(block.SampleFreq))
-	binary.LittleEndian.PutUint32(block.Content[20:], uint32(len(block.Content)-SensorDataBlockHeaderSize))
+	if content != nil && len(content) == blockSizeInBytes {
+		block.Content = content
+	}
 
 	return block
+}
+
+func (s *sensorStreamBlock) createContentBuffer() {
+	if s.Content != nil {
+		return // Already created
+	}
+
+	blockSizeInBytes := (int(s.SampleFreq*24)*int(s.SampleType.SizeInBits()) + 7) / 8
+	blockSizeInBytes = blockSizeInBytes + SensorDataBlockHeaderSize
+	s.Content = make([]byte, blockSizeInBytes)
+
+	// Write the header
+	binary.LittleEndian.PutUint32(s.Content, uint32(s.Time.Year()))
+	binary.LittleEndian.PutUint32(s.Content[4:], uint32(s.Time.Month()))
+	binary.LittleEndian.PutUint32(s.Content[8:], uint32(s.Time.Day()))
+	binary.LittleEndian.PutUint32(s.Content[12:], uint32(s.SampleType))
+	binary.LittleEndian.PutUint32(s.Content[16:], uint32(s.SampleFreq))
+	binary.LittleEndian.PutUint32(s.Content[20:], uint32(len(s.Content)-SensorDataBlockHeaderSize))
 }
 
 func (s *sensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, packetTimeSync int32, sensorValue SensorValue) {
@@ -102,9 +117,6 @@ func (s *sensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, pac
 		// Sample is out of range for this block, ignore it
 		return
 	}
-
-	// Mark the block as modified
-	s.isModified.Store(1)
 
 	// Write the sensor value to the buffer based on its type
 	switch s.SampleType {
@@ -137,6 +149,9 @@ func (s *sensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, pac
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex*8
 		binary.LittleEndian.PutUint64(s.Content[byteIndex:byteIndex+8], uint64(sensorValue.Value))
 	}
+
+	// Indicate that this block has been modified
+	s.isModified.Add(1)
 }
 
 // sensorDevice represents a group of sensors, typically associated with a device
@@ -245,33 +260,79 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 	}
 
 	// The go-routine that writes data blocks to the file system
-	go func() {
-		for block := range storage.writeChannel {
-			if err := storage.writeStreamBlock(block); err != nil {
-				fmt.Printf("Error writing data block: %v\n", err)
-			}
-		}
-	}()
+	go processWrite(storage)
 
-	storage.schedulePeriodicFlush(time.Duration(config.FlushPeriodInSeconds) * time.Second)
+	fmt.Printf("Periodic flush interval: %d seconds\n", config.FlushPeriodInSeconds)
+	schedulePeriodicFlush(storage, time.Duration(config.FlushPeriodInSeconds)*time.Second)
 
+	fmt.Printf("Sensor storage initialized, storage path: %s\n", dirpath)
 	return storage
 }
 
-func (s *SensorStorage) processFlush() {
+func (s *SensorStorage) Shutdown() {
+	// Terminate the flush go-routine
+	s.flushChannel <- nil
+	if s.flushTicker != nil {
+		s.flushTicker.Stop()
+	}
+
+	time.Sleep(1 * time.Second) // Give some time for the flush go-routine to finish
+
+	// Flush all blocks to disk
+	for _, group := range s.devices {
+		for _, sensorStream := range group.sensorStreams {
+			if sensorStream.today != nil {
+				count := sensorStream.today.isModified.Load()
+				if count > 0 {
+					sensorStream.today.isModified.Add(-count)
+					s.writeChannel <- sensorStream.today
+				}
+			}
+			if sensorStream.yesterday != nil {
+				count := sensorStream.yesterday.isModified.Load()
+				if count > 0 {
+					sensorStream.yesterday.isModified.Add(-count)
+					s.writeChannel <- sensorStream.yesterday
+				}
+			}
+		}
+	}
+
+	// End the flush go-routine
+	s.writeChannel <- nil
+
+	time.Sleep(1 * time.Second) // Give some time for the write go-routine to finish
+
+	// Close the write channel and wait for it to finish
+	close(s.writeChannel)
+}
+
+func processWrite(s *SensorStorage) {
+	for block := range s.writeChannel {
+		if block == nil {
+			fmt.Printf("go-routine for writing stream data blocks has exited\n")
+			return // Exit the go-routine
+		}
+		if err := writeStreamBlock(s, block); err != nil {
+			fmt.Printf("error writing data block: %v\n", err)
+		}
+	}
+}
+
+func processFlush(s *SensorStorage) {
 	now := time.Now()
 
 	fmt.Println("Processing flush queue, length:", len(s.flushQueue))
 
-	for i, block := range s.flushQueue {
-		if block.isModified.Load() == 1 {
-			// Only blocks that are marked as modified
-			// Push it in the write channel which will write it to disk
-			s.writeChannel <- block
+	for i, sensorStream := range s.flushQueue {
+		count := sensorStream.isModified.Load()
+		if count > 0 {
+			sensorStream.isModified.Add(-count)
+			s.writeChannel <- sensorStream
 		}
 
 		// Remove from queue if older than 2 days
-		if now.Sub(block.Time) > 48*time.Hour {
+		if now.Sub(sensorStream.Time) >= 48*time.Hour {
 			s.flushQueue[i] = nil
 		}
 	}
@@ -301,7 +362,7 @@ func (s *SensorStorage) processFlush() {
 
 }
 
-func (s *SensorStorage) schedulePeriodicFlush(interval time.Duration) {
+func schedulePeriodicFlush(s *SensorStorage, interval time.Duration) {
 	// Although we are saving the data blocks when they are full, we also want to
 	// periodically flush the content of all 'modified' blocks to disk to minimize
 	// data loss in case of a crash.
@@ -318,18 +379,18 @@ func (s *SensorStorage) schedulePeriodicFlush(interval time.Duration) {
 		for {
 			select {
 			case block := <-s.flushChannel:
-				s.flushLock.Lock()
-				defer s.flushLock.Unlock()
-				if block != nil {
-					s.flushQueue = append(s.flushQueue, block)
-				} else {
-					s.processFlush()
-					return
+				if block == nil {
+					fmt.Printf("go-routine for flushing stream data blocks has exited\n")
+					return // Exit the go-routine
 				}
+				s.flushLock.Lock()
+				s.flushQueue = append(s.flushQueue, block)
+				s.flushLock.Unlock()
 			case <-s.flushTicker.C:
 				s.flushLock.Lock()
-				defer s.flushLock.Unlock()
-				s.processFlush()
+				fmt.Printf("Periodic flush: flushing %d blocks\n", len(s.flushQueue))
+				processFlush(s)
+				s.flushLock.Unlock()
 			}
 		}
 	}()
@@ -358,27 +419,11 @@ func (s *SensorStorage) WriteSensorValue(groupIndex int32, sensorIndex int32, is
 		return fmt.Errorf("sensor sensorStream for %s is nil, not registered in group %s", SensorType(sensorIndex).String(), group.config.Name)
 	}
 
-	if sensorStream.today == nil {
-		sampleFreq := GetSampleFrequencyFromSensorType(sensorStream.sensorType)
-		samplePeriod := GetSamplePeriodInMsFromSensorType(sensorStream.sensorType)
-		sensorStream.today = newSensorStreamBlock(sensorStream, SensorFieldType(sensorStream.sensorType), sampleFreq, samplePeriod)
-		s.flushChannel <- sensorStream.today // Push the new today block on the flush channel
-	}
-
 	// Current time
 	now := time.Now()
 
-	// If the day has changed, finalize the today block and start a new one
-	if !sensorStream.today.Time.Equal(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())) {
-		if sensorStream.today != nil {
-			s.writeChannel <- sensorStream.today
-		}
-		sensorStream.yesterday = sensorStream.today
-		sampleFreq := GetSampleFrequencyFromSensorType(sensorStream.sensorType)
-		samplePeriod := GetSamplePeriodInMsFromSensorType(sensorStream.sensorType)
-		sensorStream.today = newSensorStreamBlock(sensorStream, SensorFieldType(sensorStream.sensorType), sampleFreq, samplePeriod)
-		s.flushChannel <- sensorStream.today // Push the new today block on the flush channel
-	}
+	// Update the sensor stream (check if day has changed)
+	s.updateSensorStream(sensorStream, now)
 
 	// Figure out the sensorStreamBlock:
 	//   We should know the reference time of this session, with (packetTimeSync / 40) seconds accuracy.
@@ -401,15 +446,23 @@ func (s *SensorStorage) WriteSensorValue(groupIndex int32, sensorIndex int32, is
 
 	if packetTime.Before(sensorStream.today.Time) {
 		// If packet is really old (which should not happen) then we drop it
-		if sensorStream.yesterday == nil || packetTime.Before(sensorStream.yesterday.Time) {
+		if packetTime.Before(sensorStream.yesterday.Time) {
 			return fmt.Errorf("sensor stream packet time is before yesterday block, dropping packet")
 		}
 		// Write to the yesterday block if it exists and the time fits
-		if sensorStream.yesterday != nil && packetTime.After(sensorStream.yesterday.Time) {
+		if packetTime.After(sensorStream.yesterday.Time) {
+			if sensorStream.yesterday.Content == nil {
+				sensorStream.yesterday.createContentBuffer()
+				s.flushChannel <- sensorStream.yesterday
+			}
 			sensorStream.yesterday.WriteSensorValue(sensorStream.reference, packetTimeSync, sensorValue)
 		}
 	} else {
 		// Write the sensor value to the today block's buffer
+		if sensorStream.today.Content == nil {
+			sensorStream.today.createContentBuffer()
+			s.flushChannel <- sensorStream.today
+		}
 		sensorStream.today.WriteSensorValue(sensorStream.reference, packetTimeSync, sensorValue)
 	}
 	return nil
@@ -422,13 +475,11 @@ func (s *SensorStorage) getStreamBlockFilepath(stream *sensorStream, time time.T
 	return storeFullFilepath
 }
 
-func (s *SensorStorage) writeStreamBlock(stream *sensorStreamBlock) error {
+func writeStreamBlock(s *SensorStorage, stream *sensorStreamBlock) error {
 	// Check if the stream is valid and has data
 	if stream == nil || len(stream.Content) == 0 {
 		return nil // Nothing to write
 	}
-
-	stream.isModified.Store(0) // Reset the modified flag
 
 	// Open the file for writing, fully overwrite if it exists
 	storeFullFilepath := s.getStreamBlockFilepath(stream.Stream, stream.Time)
@@ -482,27 +533,51 @@ func (s *SensorStorage) loadSensorDataBlockContent(stream *sensorStream, time ti
 	return content, nil
 }
 
-func (s *SensorStorage) setupSensorStream(stream *sensorStream) error {
+func (s *SensorStorage) setupSensorStream(sensorStream *sensorStream) error {
+
+	sampleFreq := GetSampleFrequencyFromSensorType(sensorStream.sensorType)
+	samplePeriod := GetSamplePeriodInMsFromSensorType(sensorStream.sensorType)
 
 	today := time.Now()
-	if currentContent, err := s.loadSensorDataBlockContent(stream, today); err == nil {
-		// Successfully loaded today's content
-		stream.today.Content = currentContent
+	if currentContent, err := s.loadSensorDataBlockContent(sensorStream, today); err == nil {
+		sensorStream.today = newSensorStreamBlock(sensorStream, SensorFieldType(sensorStream.sensorType), sampleFreq, samplePeriod, currentContent)
+	} else {
+		sensorStream.today = newSensorStreamBlock(sensorStream, SensorFieldType(sensorStream.sensorType), sampleFreq, samplePeriod, nil)
+	}
+
+	if sensorStream.today.Content != nil {
+		s.flushChannel <- sensorStream.today
 	}
 
 	yesterday := today.AddDate(0, 0, -1)
-	if yesterdayContent, err := s.loadSensorDataBlockContent(stream, yesterday); err == nil {
-		// Successfully loaded yesterday's content
-		if stream.yesterday == nil {
-			sampleFreq := GetSampleFrequencyFromSensorType(stream.sensorType)
-			samplePeriod := GetSamplePeriodInMsFromSensorType(stream.sensorType)
-			stream.yesterday = newSensorStreamBlock(stream, SensorFieldType(stream.sensorType), sampleFreq, samplePeriod)
-		}
-		// The content that we loaded should have the same length as the newly created block
-		if len(yesterdayContent) == len(stream.yesterday.Content) {
-			stream.yesterday.Content = yesterdayContent
-		}
+	if yesterdayContent, err := s.loadSensorDataBlockContent(sensorStream, yesterday); err == nil {
+		sensorStream.yesterday = newSensorStreamBlock(sensorStream, SensorFieldType(sensorStream.sensorType), sampleFreq, samplePeriod, yesterdayContent)
+	} else {
+		sensorStream.yesterday = newSensorStreamBlock(sensorStream, SensorFieldType(sensorStream.sensorType), sampleFreq, samplePeriod, nil)
+	}
+
+	if sensorStream.yesterday.Content != nil {
+		s.flushChannel <- sensorStream.yesterday
 	}
 
 	return nil
+}
+
+func (s *SensorStorage) updateSensorStream(sensorStream *sensorStream, today time.Time) {
+
+	// If the day has changed, finalize the today block and start a new one
+	if !sensorStream.today.Time.Equal(time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())) {
+		if sensorStream.today != nil {
+			count := sensorStream.today.isModified.Load()
+			if count > 0 {
+				sensorStream.today.isModified.Add(-count)
+				s.writeChannel <- sensorStream.today
+			}
+		}
+		sensorStream.yesterday = sensorStream.today
+		sampleFreq := GetSampleFrequencyFromSensorType(sensorStream.sensorType)
+		samplePeriod := GetSamplePeriodInMsFromSensorType(sensorStream.sensorType)
+		sensorStream.today = newSensorStreamBlock(sensorStream, SensorFieldType(sensorStream.sensorType), sampleFreq, samplePeriod, nil)
+		s.flushChannel <- sensorStream.today
+	}
 }

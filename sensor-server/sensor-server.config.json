@@ -1,7 +1,7 @@
 {
   "storage": "$HOME/sensor-server/data",
   "tcp_port": 31339,
-  "flush": 900,
+  "flush": 60,
   "devices": [
     {
       "mac": "00:1A:2B:3C:4D:5E",

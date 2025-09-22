@@ -20,6 +20,10 @@ func newSensorHandler(config *sensor_server.SensorServerConfig) *SensorHandler {
 	return &SensorHandler{config: config, storage: storage}
 }
 
+func onShutdown(h *SensorHandler) {
+	h.storage.Shutdown()
+}
+
 func (h *SensorHandler) OnAccept(c *xtcp.Conn) {
 	fmt.Println("OnAccept:", c.String())
 }
@@ -88,6 +92,7 @@ func run(ctx context.Context, args []string) error {
 
 	for range ctx.Done() {
 		server.Stop(xtcp.StopGracefullyAndWait)
+		onShutdown(handler)
 		break
 	}
 
