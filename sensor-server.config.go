@@ -8,18 +8,20 @@ import (
 )
 
 type SensorServerConfig struct {
-	StoragePath string
-	TcpPort     int
-	Devices     []*SensorGroupConfig
-	DevicesMap  map[string]int // map from Mac address to store Index
+	StoragePath          string                //
+	TcpPort              int                   //
+	FlushPeriodInSeconds int                   // how many seconds before we flush all sensor data again
+	Devices              []*SensorDeviceConfig //
+	DevicesMap           map[string]int        // map from Mac address to store Index
 }
 
 func newSensorServerConfig() *SensorServerConfig {
 	return &SensorServerConfig{
-		StoragePath: "",
-		TcpPort:     0,
-		Devices:     nil,
-		DevicesMap:  make(map[string]int),
+		StoragePath:          "",
+		TcpPort:              0,
+		FlushPeriodInSeconds: 15 * 60, // Every 15 minutes, flush to disk
+		Devices:              nil,
+		DevicesMap:           make(map[string]int),
 	}
 }
 
@@ -59,8 +61,9 @@ func decodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig 
 	fields := map[string]corepkg.JsonDecode{
 		"storage":  func(decoder *corepkg.JsonDecoder) { object.StoragePath = decoder.DecodeString() },
 		"tcp_port": func(decoder *corepkg.JsonDecoder) { object.TcpPort = int(decoder.DecodeInt32()) },
+		"flush":    func(decoder *corepkg.JsonDecoder) { object.FlushPeriodInSeconds = int(decoder.DecodeInt32()) },
 		"devices": func(decoder *corepkg.JsonDecoder) {
-			object.Devices = make([]*SensorGroupConfig, 0, 4)
+			object.Devices = make([]*SensorDeviceConfig, 0, 4)
 			for !decoder.ReadUntilArrayEnd() {
 				object.Devices = append(object.Devices, newSensorStoreConfig())
 				decodeSensorStoreConfig(decoder, object.Devices[len(object.Devices)-1])
@@ -79,19 +82,19 @@ func decodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig 
 	return object
 }
 
-type SensorGroupConfig struct {
+type SensorDeviceConfig struct {
 	Mac  string
 	Name string
 }
 
-func newSensorStoreConfig() *SensorGroupConfig {
-	return &SensorGroupConfig{
+func newSensorStoreConfig() *SensorDeviceConfig {
+	return &SensorDeviceConfig{
 		Mac:  "",
 		Name: "",
 	}
 }
 
-func decodeSensorStoreConfig(decoder *corepkg.JsonDecoder, object *SensorGroupConfig) {
+func decodeSensorStoreConfig(decoder *corepkg.JsonDecoder, object *SensorDeviceConfig) {
 	fields := map[string]corepkg.JsonDecode{
 		"mac":  func(decoder *corepkg.JsonDecoder) { object.Mac = decoder.DecodeString() },
 		"name": func(decoder *corepkg.JsonDecoder) { object.Name = decoder.DecodeString() },

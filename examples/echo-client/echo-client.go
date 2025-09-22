@@ -3,9 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	sensor_server "github.com/jurgen-kluft/go-sensor-server"
@@ -60,15 +57,13 @@ func main() {
 	// delay for 5 seconds to simulate time between packets
 	n := 5
 	for i := 1; i <= n; i++ {
-		time.Sleep(16 * time.Second)
+		time.Sleep(10 * time.Second)
 		packet = createSensorValuePacket(uint32(i * 10000))
 		sendPacket(client, packet)
 	}
 
-	// wait for signal to exit.
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-	<-sigCh
+	time.Sleep(2 * time.Second)
+	fmt.Println("Stopping client")
 }
 
 func sendPacket(c *xtcp.Conn, packet []byte) {

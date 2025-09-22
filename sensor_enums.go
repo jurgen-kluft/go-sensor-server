@@ -25,7 +25,7 @@ const (
 	PM2_5       SensorType = 0x08 // (s16, µg/m3)
 	PM10        SensorType = 0x09 // (s16, µg/m3)
 	Noise       SensorType = 0x0A // (s16, dB)
-	Presence    SensorType = 0x0B // (s8, 0-1)
+	Presence    SensorType = 0x0B // (s8, 0-1-2-3, 0=unknown, 1=none, 2=detection, 3=presence)
 	Distance    SensorType = 0x0C // (s16, cm)
 	UV          SensorType = 0x0D // (s16, index)
 	CO          SensorType = 0x0E // (s16, ppm)

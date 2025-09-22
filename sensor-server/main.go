@@ -1,10 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
-	"syscall"
 
 	sensor_server "github.com/jurgen-kluft/go-sensor-server"
 	"github.com/jurgen-kluft/go-sensor-server/xtcp"
@@ -67,24 +67,53 @@ func (h *SensorHandler) OnClose(c *xtcp.Conn) {
 	fmt.Println("OnClose:", c.String())
 }
 
-func main() {
+const (
+	exitCodeErr       = 1
+	exitCodeInterrupt = 2
+)
+
+func run(ctx context.Context, args []string) error {
+	var server *xtcp.Server
 
 	config, err := sensor_server.LoadSensorServerConfig("sensor-server.config.json")
 	if err != nil {
-		fmt.Println("Failed to load config:", err)
-		return
+		return err
 	}
 
 	handler := newSensorHandler(config)
 	options := xtcp.NewOpts(handler).SetRecvBufSize(1024)
 
-	srv := xtcp.NewServer(options)
-	go srv.ListenAndServe(fmt.Sprintf(":%d", config.TcpPort))
+	server = xtcp.NewServer(options)
+	go server.ListenAndServe(fmt.Sprintf(":%d", config.TcpPort))
 
-	// wait for signal to exit.
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-	<-sigCh
+	for range ctx.Done() {
+		server.Stop(xtcp.StopGracefullyAndWait)
+		break
+	}
 
-	srv.Stop(xtcp.StopGracefullyAndWait)
+	return nil
+}
+
+func main() {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt)
+	defer func() {
+		signal.Stop(signalChan)
+		cancel()
+	}()
+	go func() {
+		select {
+		case <-signalChan: // first signal, cancel context
+			cancel()
+		case <-ctx.Done():
+		}
+		<-signalChan // second signal, hard exit
+		os.Exit(exitCodeInterrupt)
+	}()
+	if err := run(ctx, os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(exitCodeErr)
+	}
 }
