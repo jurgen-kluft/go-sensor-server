@@ -67,6 +67,10 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 	}
 
 	if pkt.Version == 1 {
+		if pkt.Id != SensorPacketId {
+			return pkt, fmt.Errorf("sensor packet, invalid id 0x%04X", pkt.Id)
+		}
+
 		pkt.IsTimeSync = (pkt.TimeSync & 0x80000000) != 0
 		pkt.TimeSync = pkt.TimeSync & 0x7FFFFFFF
 
@@ -117,9 +121,9 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 			}
 		}
 		return pkt, nil
+	} else {
+		return pkt, fmt.Errorf("sensor packet, unknown version %d", pkt.Version)
 	}
-
-	return pkt, fmt.Errorf("sensor packet, unknown version %d", pkt.Version)
 }
 
 func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
@@ -199,11 +203,11 @@ func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
 	}
 
 	// Print the encoded packet for debugging
-	fmt.Printf("Encoded packet (length=%d): ", length)
-	for i := 0; i < length; i++ {
-		fmt.Printf("%02X ", data[i])
-	}
-	fmt.Printf("\n")
+	// fmt.Printf("Encoded packet (length=%d): ", length)
+	// for i := 0; i < length; i++ {
+	// 	fmt.Printf("%02X ", data[i])
+	// }
+	// fmt.Printf("\n")
 
 	return data, nil
 }

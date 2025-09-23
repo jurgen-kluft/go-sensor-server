@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/jurgen-kluft/go-log"
 )
 
 // Storage for sensor data
@@ -117,7 +119,7 @@ func (s *sensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, sen
 	sampleIndex := sampleTime.Sub(s.Time).Milliseconds() / (60 * 60 * 1000 / int64(sampleFreq))
 	if sampleIndex < 0 || sampleIndex >= int64(sampleFreq*24) {
 		// Sample is out of range for this block, ignore it
-		fmt.Println("Sample index out of range for this block, ignoring sample")
+		log.LogError(fmt.Errorf("Sample index out of range for this block"), "ignoring sample")
 		return
 	}
 
@@ -212,7 +214,7 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 	if _, err := os.Stat(dirpath); os.IsNotExist(err) {
 		err := os.MkdirAll(dirpath, 0755)
 		if err != nil {
-			fmt.Println("Failed to create storage directory:", err)
+			log.LogError(err, "failed to create storage directory")
 			return nil
 		}
 	}
@@ -223,7 +225,7 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 		if _, err := os.Stat(groupPath); os.IsNotExist(err) {
 			err := os.MkdirAll(groupPath, 0755)
 			if err != nil {
-				fmt.Println("Failed to create device directory:", err)
+				log.LogError(err, "failed to create device directory")
 				return nil
 			}
 		}
@@ -235,7 +237,7 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 			if _, err := os.Stat(sensorPath); os.IsNotExist(err) {
 				err := os.MkdirAll(sensorPath, 0755)
 				if err != nil {
-					fmt.Println("Failed to create sensor directory:", err)
+					log.LogError(err, "failed to create sensor directory")
 					return nil
 				}
 			}
@@ -258,10 +260,10 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 	// The go-routine that writes data blocks to the file system
 	go processWrite(storage)
 
-	fmt.Printf("Periodic flush interval: %d seconds\n", config.FlushPeriodInSeconds)
+	log.LogInfof("Periodic flush interval: %d seconds", config.FlushPeriodInSeconds)
 	schedulePeriodicFlush(storage, time.Duration(config.FlushPeriodInSeconds)*time.Second)
 
-	fmt.Printf("Sensor storage initialized, storage path: %s\n", dirpath)
+	log.LogInfof("Sensor storage initialized, storage path: %s", dirpath)
 	return storage
 }
 
@@ -306,11 +308,11 @@ func (s *SensorStorage) Shutdown() {
 func processWrite(s *SensorStorage) {
 	for block := range s.writeChannel {
 		if block == nil {
-			fmt.Printf("go-routine for writing stream data blocks has exited\n")
+			log.LogInfo("go-routine for writing stream data blocks has exited")
 			return // Exit the go-routine
 		}
 		if err := writeStreamBlock(s, block); err != nil {
-			fmt.Printf("error writing data block: %v\n", err)
+			log.LogError(err, "writing data block")
 		}
 	}
 }
@@ -319,43 +321,53 @@ func processFlush(s *SensorStorage) {
 	now := time.Now()
 
 	toWrite := 0
+	toNil := 0
 	for i, sensorStream := range s.flushQueue {
 		count := sensorStream.isModified.Load()
 		if count > 0 {
 			sensorStream.isModified.Add(-count)
+			if toWrite == 0 {
+				log.LogInfof("Processing flush queue")
+			}
 			toWrite += 1
 			s.writeChannel <- sensorStream
 		}
 
 		// Remove from queue if older than 2 days
 		if now.Sub(sensorStream.Time) >= 48*time.Hour {
+			toNil += 1
 			s.flushQueue[i] = nil
 		}
 	}
-	fmt.Printf("Processing flush queue, writing %d streams to disk\n", toWrite)
 
-	// Sort queue (nil entries will be at the end)
-	sort.SliceStable(s.flushQueue, func(i, j int) bool {
-		if s.flushQueue[i] == nil {
-			return false
-		}
-		if s.flushQueue[j] == nil {
-			return true
-		}
-		return s.flushQueue[i].Time.Before(s.flushQueue[j].Time)
-	})
-
-	// Figure out the index of the last non-nil entry
-	lastNonNilIndex := -1
-	for i := len(s.flushQueue) - 1; i >= 0; i-- {
-		if s.flushQueue[i] != nil {
-			lastNonNilIndex = i
-			break
-		}
+	if toWrite > 0 {
+		log.LogInfof("Processed flush queue, writing %d streams to disk", toWrite)
 	}
 
-	// Trim the queue to remove nil entries
-	s.flushQueue = s.flushQueue[:lastNonNilIndex+1]
+	if toNil > 0 {
+		// Sort queue (nil entries will be at the end)
+		sort.SliceStable(s.flushQueue, func(i, j int) bool {
+			if s.flushQueue[i] == nil {
+				return false
+			}
+			if s.flushQueue[j] == nil {
+				return true
+			}
+			return s.flushQueue[i].Time.Before(s.flushQueue[j].Time)
+		})
+
+		// Figure out the index of the last non-nil entry
+		lastNonNilIndex := -1
+		for i := len(s.flushQueue) - 1; i >= 0; i-- {
+			if s.flushQueue[i] != nil {
+				lastNonNilIndex = i
+				break
+			}
+		}
+
+		// Trim the queue to remove nil entries
+		s.flushQueue = s.flushQueue[:lastNonNilIndex+1]
+	}
 }
 
 func schedulePeriodicFlush(s *SensorStorage, interval time.Duration) {
@@ -376,7 +388,7 @@ func schedulePeriodicFlush(s *SensorStorage, interval time.Duration) {
 			select {
 			case block := <-s.flushChannel:
 				if block == nil {
-					fmt.Printf("go-routine for flushing stream data blocks has exited\n")
+					log.LogInfo("go-routine for flushing stream data blocks has exited")
 					return // Exit the go-routine
 				}
 				s.flushLock.Lock()
@@ -384,7 +396,6 @@ func schedulePeriodicFlush(s *SensorStorage, interval time.Duration) {
 				s.flushLock.Unlock()
 			case <-s.flushTicker.C:
 				s.flushLock.Lock()
-				fmt.Printf("Periodic flush: flushing %d blocks\n", len(s.flushQueue))
 				processFlush(s)
 				s.flushLock.Unlock()
 			}
@@ -419,7 +430,7 @@ func (s *SensorStorage) ProcessTimeSync(deviceIndex int32, packetTimeSync uint32
 	// Current time
 	now := time.Now()
 
-	fmt.Printf("TimeSync: device=%s, timeSync=%d\n", device.config.Name, packetTimeSync)
+	log.LogInfof("TimeSync: device=%s, timeSync=%d", device.config.Name, packetTimeSync)
 
 	for _, sensorStream := range s.devices[deviceIndex].sensorStreams {
 		if sensorStream == nil {
@@ -437,18 +448,18 @@ func (s *SensorStorage) WriteSensorValue(deviceIndex int32, sensorStreamIndex in
 	// Create or get the data block for the given location and sensor type
 	device := s.devices[deviceIndex]
 	if device == nil {
-		return fmt.Errorf("sensor device is nil")
+		return log.LogErr(fmt.Errorf("sensor device is nil"), "device index: ", string(deviceIndex))
 	}
 
 	sensorStream := device.sensorStreams[sensorStreamIndex]
 	if sensorStream == nil {
-		return fmt.Errorf("sensor sensorStream for %s is nil, not registered in device %s", SensorType(sensorStreamIndex).String(), device.config.Name)
+		return log.LogErr(fmt.Errorf("sensor sensorStream is nil, not registered"), "sensor type: ", SensorType(sensorStreamIndex).String(), "device: ", device.config.Name)
 	}
 
 	// Current time
 	now := time.Now()
 
-	fmt.Printf("WriteSensorValue: device=%s, sensor=%s, value=%d\n", device.config.Name, SensorType(sensorStreamIndex).String(), sensorValue.Value)
+	log.LogInfof("WriteSensorValue: device=%s, sensor=%s, value=%d", device.config.Name, SensorType(sensorStreamIndex).String(), sensorValue.Value)
 
 	// Update the sensor stream (check if day has changed, etc..)
 	s.activeSensorStream(sensorStream, now)
@@ -461,16 +472,14 @@ func (s *SensorStorage) WriteSensorValue(deviceIndex int32, sensorStreamIndex in
 	// If we do not have a reference time yet then we are unable to figure out the time for this packet.
 	// So we can do nothing else then dropping this packet.
 	if sensorStream.reference.IsZero() {
-		fmt.Println("Sensor stream reference time is zero, cannot store packet")
-		return fmt.Errorf("sensor stream reference time is zero, cannot store packet")
+		return log.LogErr(fmt.Errorf("sensor stream reference time is zero, cannot store packet"), "device: ", device.config.Name, "sensor: ", SensorType(sensorStreamIndex).String())
 	}
 	packetTime = sensorStream.reference.Add(time.Duration(packetTimeSync*25) * time.Millisecond)
 
 	if packetTime.Before(sensorStream.today.Time) {
 		// If packet is really old (which should not happen) then we drop it
 		if packetTime.Before(sensorStream.yesterday.Time) {
-			fmt.Println("Sensor stream packet time is before yesterday block, dropping packet")
-			return fmt.Errorf("sensor stream packet time is before yesterday block, dropping packet")
+			return log.LogErr(fmt.Errorf("sensor stream packet time is before yesterday block, dropping packet"), "device: ", device.config.Name, "sensor: ", SensorType(sensorStreamIndex).String())
 		}
 		// Write to the yesterday block if it exists and the time fits
 		if packetTime.After(sensorStream.yesterday.Time) {
@@ -514,7 +523,7 @@ func writeStreamBlock(s *SensorStorage, stream *sensorStreamBlock) error {
 	}
 	defer file.Close()
 
-	fmt.Printf("Writing data block to file: %s\n", storeFullFilepath)
+	log.LogInfof("Writing data block to file: %s", storeFullFilepath)
 
 	// Write the header and data to the file
 	_, err = file.Write(stream.Content)
