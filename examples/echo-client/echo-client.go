@@ -80,7 +80,7 @@ func createMacAddressPacket() []byte {
 
 	// Send first packet which is nothing more than a mac address
 	packet := make([]byte, 0, 16)
-	packet = writePacketHeader(packet, 0)
+	packet = writePacketHeader(packet, 0, true)
 
 	// "mac": "00:1A:2B:3C:4D:5E", u64, highest byte should be at lowest byte in u64
 	mac := uint64(0x005E4D3C2B1A00)
@@ -92,7 +92,7 @@ func createMacAddressPacket() []byte {
 
 func createSensorValuePacket(time uint32) []byte {
 	packet := make([]byte, 0, 32)
-	packet = writePacketHeader(packet, time)
+	packet = writePacketHeader(packet, time, false)
 
 	// "temperature": 24
 	packet = writeSensorValue(packet, sensor_server.Temperature, 24)
@@ -104,13 +104,18 @@ func createSensorValuePacket(time uint32) []byte {
 	return packet
 }
 
-func writePacketHeader(packet []byte, timeSync uint32) []byte {
+func writePacketHeader(packet []byte, timeSync uint32, isTimeSync bool) []byte {
 	id := sensor_server.SensorPacketId
 
-	packet = append(packet, 0)                         // length
-	packet = append(packet, 1)                         // version
-	packet = append(packet, byte((id>>0)&0xFF))        // packet id
-	packet = append(packet, byte((id>>8)&0xFF))        // packet id
+	packet = append(packet, 0)                  // length
+	packet = append(packet, 1)                  // version
+	packet = append(packet, byte((id>>0)&0xFF)) // packet id
+	packet = append(packet, byte((id>>8)&0xFF)) // packet id
+
+	if isTimeSync {
+		timeSync = timeSync | 0x80000000 // set highest bit to indicate time sync
+	}
+
 	packet = append(packet, byte((timeSync)&0xFF))     // time sync
 	packet = append(packet, byte((timeSync>>8)&0xFF))  // time sync
 	packet = append(packet, byte((timeSync>>16)&0xFF)) // time sync

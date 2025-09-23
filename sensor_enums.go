@@ -123,6 +123,10 @@ func GetFieldTypeFromType(st SensorType) SensorFieldType {
 	return TypeNone
 }
 
+func (st SensorType) FieldType() SensorFieldType {
+	return GetFieldTypeFromType(st)
+}
+
 // String returns the string representation of the SensorType.
 var SensorTypeName []string = []string{
 	"Temperature", "Humidity", "Pressure", "Light",

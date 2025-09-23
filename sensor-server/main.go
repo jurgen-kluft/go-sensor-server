@@ -51,6 +51,11 @@ func (h *SensorHandler) OnRecv(c *xtcp.Conn, p xtcp.Packet) {
 		// Find the device with this macAddress
 		if index, ok := h.config.DevicesMap[macAddress]; ok {
 			c.UserData = int32(index) // Mark that we have received the sensor packet.
+			h.storage.RegisterDevice(c.UserData)
+			if sensor.IsTimeSync {
+				fmt.Println("Handling time sync for device:", h.config.Devices[index].Name)
+				h.storage.ProcessTimeSync(c.UserData, sensor.TimeSync)
+			}
 			fmt.Println("Registered device:", h.config.Devices[index].Name)
 		} else {
 			// This device is not registered, close this connection
@@ -59,9 +64,15 @@ func (h *SensorHandler) OnRecv(c *xtcp.Conn, p xtcp.Packet) {
 		}
 	} else {
 		if c.UserData >= 0 {
+			if sensor.IsTimeSync {
+				fmt.Println("Handling time sync for device:", h.config.Devices[c.UserData].Name)
+				h.storage.ProcessTimeSync(c.UserData, sensor.TimeSync)
+			}
 			for _, v := range sensor.Values {
 				sensorIndex := h.storage.RegisterSensor(c.UserData, v.SensorType)
-				h.storage.WriteSensorValue(c.UserData, sensorIndex, sensor.IsTimeSync, sensor.TimeSync, v)
+				if sensorIndex >= 0 {
+					h.storage.WriteSensorValue(c.UserData, sensorIndex, sensor.TimeSync, v)
+				}
 			}
 		}
 	}
