@@ -45,8 +45,8 @@ type SensorPacket struct {
 }
 
 type SensorValue struct {
-	SensorType SensorType
-	Value      int64
+	Sensor Sensor
+	Value  int64
 }
 
 func (v *SensorValue) IsZero() bool {
@@ -84,9 +84,12 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 		numberOfValues := 0
 		for offset <= int(pkt.Length)-2 {
 			sensorType := SensorType(data[offset])
-			fieldType := GetFieldTypeFromType(sensorType)
-			offset += 1 + ((fieldType.SizeInBits() + 7) / 8)
-			numberOfValues++
+			if sensor, ok := SensorTypeToSensorMap[sensorType]; !ok {
+				return pkt, fmt.Errorf("sensor packet, unknown sensor type %d", sensorType)
+			} else {
+				offset += 1 + ((sensor.SizeInBits() + 7) / 8)
+				numberOfValues++
+			}
 		}
 		pkt.Values = make([]SensorValue, 0, numberOfValues)
 
@@ -94,14 +97,15 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 		offset = SensorPacketHeaderSize
 
 		for offset <= int(pkt.Length)-2 {
-			value := SensorValue{SensorType: SensorType(data[offset])}
-			fieldType := GetFieldTypeFromType(value.SensorType)
+			sensorType := SensorType(data[offset])
+			sensor, _ := SensorTypeToSensorMap[sensorType]
+			value := SensorValue{Sensor: sensor}
 
 			offset += 1
 
 			// depending on FieldType, read the appropriate value.
 			// the written values are in little-endian format
-			switch fieldType {
+			switch sensor.FieldType() {
 			case TypeS8, TypeU8:
 				value.Value = int64(data[offset])
 				pkt.Values = append(pkt.Values, value)
@@ -134,12 +138,10 @@ func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
 	// Compute the length of the packet.
 	length := SensorPacketHeaderSize
 	for _, v := range pkt.Values {
-		fieldType := GetFieldTypeFromType(v.SensorType)
-		if fieldType.SizeInBits() == 0 {
-			return nil, fmt.Errorf("sensor packet, unknown field type for sensor type %d", v.SensorType)
+		if v.Sensor.SizeInBits() == 0 {
+			return nil, fmt.Errorf("sensor packet, unknown field type for sensor type %d", v.Sensor.Name())
 		}
-		// type(byte) + sizeof(value)
-		length += 1 + ((fieldType.SizeInBits() + 7) / 8)
+		length += 1 + ((v.Sensor.SizeInBits() + 7) / 8)
 	}
 	if length > 255*2 {
 		return nil, fmt.Errorf("sensor packet, too many values")
@@ -164,9 +166,9 @@ func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
 
 	offset := SensorPacketHeaderSize
 	for _, v := range pkt.Values {
-		data[offset] = byte(v.SensorType)
+		data[offset] = byte(v.Sensor.Type())
 		offset += 1
-		fieldType := GetFieldTypeFromType(v.SensorType)
+		fieldType := v.Sensor.FieldType()
 		switch fieldType {
 		case TypeS8:
 			data[offset] = byte(v.Value & 0xFF)
@@ -193,7 +195,7 @@ func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
 			binary.LittleEndian.PutUint64(data[offset:offset+8], uint64(v.Value))
 			offset += 8
 		default:
-			return nil, fmt.Errorf("sensor packet, unknown field type for sensor type %d", v.SensorType)
+			return nil, fmt.Errorf("sensor packet, unknown field type for sensor type %s", v.Sensor.Name())
 		}
 	}
 

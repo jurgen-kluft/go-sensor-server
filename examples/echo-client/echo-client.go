@@ -84,7 +84,7 @@ func createMacAddressPacket() []byte {
 
 	// "mac": "00:1A:2B:3C:4D:5E", u64, highest byte should be at lowest byte in u64
 	mac := uint64(0x005E4D3C2B1A00)
-	packet = writeSensorValue(packet, sensor_server.MacAddress, mac)
+	packet = writeSensorValue(packet, sensor_server.SensorTypeToSensorMap[sensor_server.MacAddress], mac)
 
 	packet = finalizePacket(packet)
 	return packet
@@ -95,10 +95,10 @@ func createSensorValuePacket(time uint32) []byte {
 	packet = writePacketHeader(packet, time, false)
 
 	// "temperature": 24
-	packet = writeSensorValue(packet, sensor_server.Temperature, 24)
+	packet = writeSensorValue(packet, sensor_server.SensorTypeToSensorMap[sensor_server.Temperature], 24)
 
 	// "humidity": 50
-	packet = writeSensorValue(packet, sensor_server.Humidity, 50)
+	packet = writeSensorValue(packet, sensor_server.SensorTypeToSensorMap[sensor_server.Humidity], 50)
 
 	packet = finalizePacket(packet)
 	return packet
@@ -124,11 +124,11 @@ func writePacketHeader(packet []byte, timeSync uint32, isTimeSync bool) []byte {
 	return packet
 }
 
-func writeSensorValue(packet []byte, sensorType sensor_server.SensorType, value uint64) []byte {
+func writeSensorValue(packet []byte, sensor sensor_server.Sensor, value uint64) []byte {
 	// sensor type
-	packet = append(packet, byte(sensorType))
+	packet = append(packet, byte(sensor.Type()))
 
-	n := (sensorType.SizeInBits() + 7) / 8
+	n := (sensor.SizeInBits() + 7) / 8
 	if n == 0 {
 		return packet
 	}

@@ -43,7 +43,7 @@ func (h *SensorHandler) OnRecv(c *xtcp.Conn, p xtcp.Packet) {
 		return
 	}
 
-	if len(sensor.Values) == 1 && sensor.Values[0].SensorType == sensor_server.MacAddress {
+	if len(sensor.Values) == 1 && sensor.Values[0].Sensor.IsMac() {
 		value := uint64(sensor.Values[0].Value)
 		valueBytes := []byte{byte(value >> 0), byte(value >> 8), byte(value >> 16), byte(value >> 24), byte(value >> 32), byte(value >> 40), byte(value >> 48), byte(value >> 56)}
 		macAddress := fmt.Sprintf("%02X:%02X:%02X:%02X:%02X:%02X", valueBytes[0], valueBytes[1], valueBytes[2], valueBytes[3], valueBytes[4], valueBytes[5])
@@ -69,7 +69,7 @@ func (h *SensorHandler) OnRecv(c *xtcp.Conn, p xtcp.Packet) {
 				h.storage.ProcessTimeSync(c.UserData, sensor.TimeSync)
 			}
 			for _, v := range sensor.Values {
-				sensorIndex := h.storage.RegisterSensor(c.UserData, v.SensorType)
+				sensorIndex := h.storage.RegisterSensor(c.UserData, v.Sensor)
 				if sensorIndex >= 0 {
 					h.storage.WriteSensorValue(c.UserData, sensorIndex, sensor.TimeSync, v)
 				}

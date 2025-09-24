@@ -1,12 +1,12 @@
 # Sensor Server
 
-This is the README for Sensor Server, a tcp server for processing sensor data in real-time and writing them to disk in an structured format.
+A tcp server for receiving sensor data in real-time and writing them to disk in an custom structured format.
 
 Some notes:
 
-- Every sensor is a data stream that is 'per day', and falls under a sensor group which is a device.
+- Every sensor is a data stream, and falls under a sensor group which is a device.
 - Data is very minimal and it should be quite easy to load/use it in a visualization tool
-- Snappy is used upon writing, and reading, data to/from disk.
+- Snappy is used upon writing, and reading data to/from disk (only for files > 32 KB and header is not compressed)
 
 ## Status
 
@@ -15,7 +15,7 @@ Some notes:
 
 ## Data Format
 
-Example for a Tempature sensor:
+Example for a Temperature sensor:
 
 Storing the temperature every minute for a year with 1 signed byte would require:
 ```

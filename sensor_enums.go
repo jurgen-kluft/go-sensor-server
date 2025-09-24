@@ -2,17 +2,12 @@ package sensor_server
 
 import "strings"
 
-type SensorModel uint8
-
-const (
-	GPIO   SensorModel = 0x00
-	BH1750 SensorModel = 0x10
-	BME280 SensorModel = 0x20
-	SCD4X  SensorModel = 0x30
-)
-
 type SensorType uint8
 
+// Note: The values must match the SensorType enum in the firmware.
+//
+//	So it is not a good idea to change the value of a SensorType.
+//	Add new types at the end of the list.
 const (
 	Unknown     SensorType = 0    // Unknown sensor type
 	Temperature SensorType = 0x01 // (s8, °C)
@@ -32,24 +27,8 @@ const (
 	Vibration   SensorType = 0x0F // (s8,  <=16=none, <=64=low, <=128=medium, <=192=high, <=255=extreme)
 	State       SensorType = 0x10 // (s32 (u8[4]), sensor model, sensor state)
 	MacAddress  SensorType = 0x11 // (u64, MAC address)
+	SensorCount            = 0x12 // The maximum number of sensor types (highest index + 1)
 )
-
-var SensorTypes []SensorType = []SensorType{
-	Unknown,
-	Temperature, Humidity, Pressure, Light,
-	CO2, VOC, PM1_0, PM2_5,
-	PM10, Noise, Presence, Distance,
-	UV, CO, Vibration, State,
-	MacAddress,
-}
-
-func (t SensorType) SizeInBits() int {
-	field := GetFieldTypeFromType(t)
-	if field != TypeNone {
-		return field.SizeInBits()
-	}
-	return 0
-}
 
 type SensorState uint8
 
@@ -74,78 +53,27 @@ const (
 	TypeU64  SensorFieldType = 0xC0
 )
 
-func (t SensorFieldType) SizeInBits() int {
-	return int(t) & 0x7F
+var SensorTypeToSensorMap map[SensorType]Sensor = map[SensorType]Sensor{
+	Temperature: {mName: "temperature", mType: Temperature, mField: TypeS8, mFreq: 12},
+	Humidity:    {mName: "humidity", mType: Humidity, mField: TypeS8, mFreq: 12},
+	Pressure:    {mName: "pressure", mType: Pressure, mField: TypeS16, mFreq: 12},
+	Light:       {mName: "light", mType: Light, mField: TypeS16, mFreq: 120},
+	CO2:         {mName: "co2", mType: CO2, mField: TypeS16, mFreq: 60},
+	VOC:         {mName: "voc", mType: VOC, mField: TypeS16, mFreq: 30},
+	PM1_0:       {mName: "pm1_0", mType: PM1_0, mField: TypeS16, mFreq: 30},
+	PM2_5:       {mName: "pm2_5", mType: PM2_5, mField: TypeS16, mFreq: 30},
+	PM10:        {mName: "pm10", mType: PM10, mField: TypeS16, mFreq: 30},
+	Noise:       {mName: "noise", mType: Noise, mField: TypeS8, mFreq: 60},
+	Presence:    {mName: "presence", mType: Presence, mField: TypeS8, mFreq: 7200},
+	Distance:    {mName: "distance", mType: Distance, mField: TypeS16, mFreq: 7200},
+	UV:          {mName: "uv", mType: UV, mField: TypeS8, mFreq: 30},
+	CO:          {mName: "co", mType: CO, mField: TypeS8, mFreq: 30},
+	Vibration:   {mName: "vibration", mType: Vibration, mField: TypeS8, mFreq: 3600},
+	State:       {mName: "state", mType: State, mField: TypeS16, mFreq: 12},
+	MacAddress:  {mName: "macaddress", mType: MacAddress, mField: TypeU64, mFreq: 1},
 }
 
-// ToSensorFrequency returns the default frequency (samples per hour) for the given SensorType.
-
-var SensorTypeToSampleFrequencyMap []int32 = []int32{
-	60, 12, 12, 120,
-	60, 30, 30, 30,
-	30, 60, 7200, 7200,
-	30, 30, 3600, 12,
-	1,
-}
-
-func GetSampleFrequencyFromSensorType(st SensorType) int32 {
-	index := st.Index()
-	// Compensate for the Unknown type at index 0
-	if index > 0 && index <= len(SensorTypeToSampleFrequencyMap) {
-		return SensorTypeToSampleFrequencyMap[index-1]
-	}
-	return 0
-}
-
-func GetSamplePeriodInMsFromSensorType(st SensorType) int32 {
-	index := st.Index()
-	// Compensate for the Unknown type at index 0
-	if index >= 0 && index < len(SensorTypeToSampleFrequencyMap) {
-		return 60 * 60 * 1000 / SensorTypeToSampleFrequencyMap[index]
-	}
-	return 0
-}
-
-var SensorFieldTypeMap []SensorFieldType = []SensorFieldType{
-	TypeS8, TypeS8, TypeS16, TypeS16,
-	TypeS16, TypeS16, TypeS16, TypeS16,
-	TypeS16, TypeS8, TypeS8, TypeS16,
-	TypeS8, TypeS8, TypeS8, TypeS16,
-	TypeU64,
-}
-
-func GetFieldTypeFromType(st SensorType) SensorFieldType {
-	index := st.Index()
-	// Compensate for the Unknown type at index 0
-	if index > 0 && index <= len(SensorFieldTypeMap) {
-		return SensorFieldTypeMap[index-1]
-	}
-	return TypeNone
-}
-
-func (st SensorType) FieldType() SensorFieldType {
-	return GetFieldTypeFromType(st)
-}
-
-// String returns the string representation of the SensorType.
-var SensorTypeName []string = []string{
-	"Temperature", "Humidity", "Pressure", "Light",
-	"CO2", "VOC", "PM1.0", "PM2.5",
-	"PM10", "Noise", "Presence", "Distance",
-	"UV", "CO", "Vibration", "State",
-	"MacAddress",
-}
-
-func (st SensorType) String() string {
-	index := st.Index()
-	// Compensate for the Unknown type at index 0
-	if index > 0 && index <= len(SensorTypeName) {
-		return SensorTypeName[index-1]
-	}
-	return "Unknown"
-}
-
-var StringToSensorTypeMap map[string]SensorType = map[string]SensorType{
+var SensorNameToSensorTypeMap map[string]SensorType = map[string]SensorType{
 	"temperature": Temperature,
 	"humidity":    Humidity,
 	"pressure":    Pressure,
@@ -165,26 +93,63 @@ var StringToSensorTypeMap map[string]SensorType = map[string]SensorType{
 	"macaddress":  MacAddress,
 }
 
-func NewSensorType(name string) SensorType {
+type Sensor struct {
+	mName  string          // sensor name, e.g. "temperature"
+	mType  SensorType      // sensor type
+	mField SensorFieldType // data field type
+	mFreq  int32           // samples per hour
+}
+
+func NewSensorByName(name string) Sensor {
 	name = strings.ToLower(name)
-	if st, ok := StringToSensorTypeMap[name]; ok {
-		return st
+	if st, ok := SensorNameToSensorTypeMap[name]; ok {
+		if sensor, ok := SensorTypeToSensorMap[st]; ok {
+			return sensor
+		}
 	}
-	return Unknown
+	return Sensor{mName: "unknown", mType: Unknown, mField: TypeNone, mFreq: 0}
 }
 
-func (st SensorType) Index() int {
-	return int(st)
+func (t Sensor) Name() string {
+	return t.mName
 }
 
-func (st SensorType) IsValid() bool {
-	return st != Unknown
+func (t Sensor) FullIdentifier() uint64 {
+	return (uint64(t.mField)<<8)&0xFF | uint64(t.mType)&0xFF | ((uint64(t.mFreq) << 32) & 0xFFFFFFFF00000000)
 }
 
-func (st SensorType) FromString(name string) SensorType {
-	name = strings.ToLower(name)
-	if st, ok := StringToSensorTypeMap[name]; ok {
-		return st
-	}
-	return Unknown
+func (t Sensor) SizeInBits() int {
+	return int(t.mField) & 0x7F
+}
+
+func (st Sensor) Index() int {
+	return int(st.mType)
+}
+
+func (st Sensor) IsValid() bool {
+	return st.mType != Unknown
+}
+
+func (st Sensor) IsMac() bool {
+	return st.mType == MacAddress
+}
+
+func (st Sensor) String() string {
+	return st.mName
+}
+
+func (st Sensor) SampleFrequency() int32 {
+	return st.mFreq
+}
+
+func (st Sensor) SamplePeriodInMs() int32 {
+	return 60 * 60 * 1000 / st.mFreq
+}
+
+func (st Sensor) Type() SensorType {
+	return st.mType
+}
+
+func (st Sensor) FieldType() SensorFieldType {
+	return st.mField
 }
