@@ -20,14 +20,18 @@ const (
 	PM2_5       SensorType = 0x08 // (s16, µg/m3)
 	PM10        SensorType = 0x09 // (s16, µg/m3)
 	Noise       SensorType = 0x0A // (s16, dB)
-	Presence    SensorType = 0x0B // (s8, 0-1-2-3, 0=unknown, 1=none, 2=detection, 3=presence)
-	Distance    SensorType = 0x0C // (s16, cm)
-	UV          SensorType = 0x0D // (s16, index)
-	CO          SensorType = 0x0E // (s16, ppm)
-	Vibration   SensorType = 0x0F // (s8,  <=16=none, <=64=low, <=128=medium, <=192=high, <=255=extreme)
-	State       SensorType = 0x10 // (s32 (u8[4]), sensor model, sensor state)
-	MacAddress  SensorType = 0x11 // (u64, MAC address)
-	SensorCount            = 0x12 // The maximum number of sensor types (highest index + 1)
+	UV          SensorType = 0x0B // (s16, index)
+	CO          SensorType = 0x0C // (s16, ppm)
+	Vibration   SensorType = 0x0D // (s8,  <=16=none, <=64=low, <=128=medium, <=192=high, <=255=extreme)
+	State       SensorType = 0x0E // (s32 (u8[4]), sensor model, sensor state)
+	MacAddress  SensorType = 0x0F // (u64, MAC address)
+	Presence1   SensorType = 0x10 // (u8, 0=none, 1=trigger up/down, 2=presence)
+	Presence2   SensorType = 0x11 // (u8, 0=none, 1=trigger up/down, 2=presence)
+	Presence3   SensorType = 0x12 // (u8, 0=none, 1=trigger up/down, 2=presence)
+	Distance1   SensorType = 0x13 // (u16, cm)
+	Distance2   SensorType = 0x14 // (u16, cm)
+	Distance3   SensorType = 0x15 // (u16, cm)
+	SensorCount            = 0x17 // The maximum number of sensor types (highest index + 1)
 )
 
 type SensorState uint8
@@ -64,13 +68,17 @@ var SensorTypeToSensorMap map[SensorType]Sensor = map[SensorType]Sensor{
 	PM2_5:       {mName: "pm2_5", mType: PM2_5, mField: TypeS16, mFreq: 30},
 	PM10:        {mName: "pm10", mType: PM10, mField: TypeS16, mFreq: 30},
 	Noise:       {mName: "noise", mType: Noise, mField: TypeS8, mFreq: 60},
-	Presence:    {mName: "presence", mType: Presence, mField: TypeS8, mFreq: 7200},
-	Distance:    {mName: "distance", mType: Distance, mField: TypeS16, mFreq: 7200},
 	UV:          {mName: "uv", mType: UV, mField: TypeS8, mFreq: 30},
 	CO:          {mName: "co", mType: CO, mField: TypeS8, mFreq: 30},
 	Vibration:   {mName: "vibration", mType: Vibration, mField: TypeS8, mFreq: 3600},
 	State:       {mName: "state", mType: State, mField: TypeS16, mFreq: 12},
 	MacAddress:  {mName: "macaddress", mType: MacAddress, mField: TypeU64, mFreq: 1},
+	Presence1:   {mName: "presence1", mType: Presence1, mField: TypeS8, mFreq: 7200},
+	Presence2:   {mName: "presence2", mType: Presence2, mField: TypeS8, mFreq: 7200},
+	Presence3:   {mName: "presence3", mType: Presence3, mField: TypeS8, mFreq: 7200},
+	Distance1:   {mName: "distance1", mType: Distance1, mField: TypeS16, mFreq: 7200},
+	Distance2:   {mName: "distance2", mType: Distance2, mField: TypeS16, mFreq: 7200},
+	Distance3:   {mName: "distance3", mType: Distance3, mField: TypeS16, mFreq: 7200},
 }
 
 var SensorNameToSensorTypeMap map[string]SensorType = map[string]SensorType{
@@ -84,13 +92,17 @@ var SensorNameToSensorTypeMap map[string]SensorType = map[string]SensorType{
 	"pm2_5":       PM2_5,
 	"pm10":        PM10,
 	"noise":       Noise,
-	"presence":    Presence,
-	"distance":    Distance,
 	"uv":          UV,
 	"co":          CO,
 	"vibration":   Vibration,
 	"state":       State,
 	"macaddress":  MacAddress,
+	"presence1":   Presence1,
+	"presence2":   Presence2,
+	"presence3":   Presence3,
+	"distance1":   Distance1,
+	"distance2":   Distance2,
+	"distance3":   Distance3,
 }
 
 type Sensor struct {
