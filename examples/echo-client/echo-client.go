@@ -51,14 +51,11 @@ func main() {
 		close(clientClosed)
 	}()
 
-	packet := createMacAddressPacket()
-	sendPacket(client, packet)
-
 	// delay for 5 seconds to simulate time between packets
 	n := 5
 	for i := 1; i <= n; i++ {
 		time.Sleep(10 * time.Second)
-		packet = createSensorValuePacket(uint32(i * 10000))
+		packet := createSensorValuePacket(uint32(i * 10000))
 		sendPacket(client, packet)
 	}
 
@@ -76,55 +73,35 @@ func sendPacket(c *xtcp.Conn, packet []byte) {
 	fmt.Printf("Sent %d bytes: %s\n", n, message)
 }
 
-func createMacAddressPacket() []byte {
-
-	// Send first packet which is nothing more than a mac address
-	packet := make([]byte, 0, 16)
-	packet = writePacketHeader(packet, 0, true)
-
-	// "mac": "00:1A:2B:3C:4D:5E", u64, highest byte should be at lowest byte in u64
-	mac := uint64(0x005E4D3C2B1A00)
-	packet = writeSensorValue(packet, sensor_server.SensorTypeToSensorMap[sensor_server.MacAddress], mac)
-
-	packet = finalizePacket(packet)
-	return packet
-}
-
 func createSensorValuePacket(time uint32) []byte {
 	packet := make([]byte, 0, 32)
-	packet = writePacketHeader(packet, time, false)
+	packet = writePacketHeader(packet, 1)
 
 	// "temperature": 24
-	packet = writeSensorValue(packet, sensor_server.SensorTypeToSensorMap[sensor_server.Temperature], 24)
+	// {"index": 22,"name": "floor1_livingarea_temperature", "type": "temperature", "field_type": "s8", "frequency": 12},
+	temperatureSensor := sensor_server.NewSensorConfig(22, "floor1_livingarea_temperature", sensor_server.Temperature, sensor_server.TypeS8, 12)
+	packet = writeSensorValue(packet, temperatureSensor, 24)
 
 	// "humidity": 50
-	packet = writeSensorValue(packet, sensor_server.SensorTypeToSensorMap[sensor_server.Humidity], 50)
+	// {"index": 23,"name": "floor1_livingarea_humidity", "type": "humidity", "field_type": "s8", "frequency": 12},
+	humiditySensor := sensor_server.NewSensorConfig(23, "floor1_livingarea_humidity", sensor_server.Humidity, sensor_server.TypeS8, 12)
+	packet = writeSensorValue(packet, humiditySensor, 50)
 
 	packet = finalizePacket(packet)
 	return packet
 }
 
-func writePacketHeader(packet []byte, timeSync uint32, isTimeSync bool) []byte {
-	id := sensor_server.SensorPacketId
+func writePacketHeader(packet []byte, id uint16) []byte {
 
 	packet = append(packet, 0)                  // length
 	packet = append(packet, 1)                  // version
 	packet = append(packet, byte((id>>0)&0xFF)) // packet id
 	packet = append(packet, byte((id>>8)&0xFF)) // packet id
 
-	if isTimeSync {
-		timeSync = timeSync | 0x80000000 // set highest bit to indicate time sync
-	}
-
-	packet = append(packet, byte((timeSync)&0xFF))     // time sync
-	packet = append(packet, byte((timeSync>>8)&0xFF))  // time sync
-	packet = append(packet, byte((timeSync>>16)&0xFF)) // time sync
-	packet = append(packet, byte((timeSync>>24)&0xFF)) // time sync
-
 	return packet
 }
 
-func writeSensorValue(packet []byte, sensor sensor_server.Sensor, value uint64) []byte {
+func writeSensorValue(packet []byte, sensor *sensor_server.SensorConfig, value uint64) []byte {
 	// sensor type
 	packet = append(packet, byte(sensor.Type()))
 

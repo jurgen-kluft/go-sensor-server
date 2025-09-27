@@ -36,43 +36,18 @@ func (h *SensorHandler) OnRecv(c *xtcp.Conn, p xtcp.Packet) {
 	fmt.Println("OnRecv:", c.String(), "len:", len(p.Body))
 
 	// The first packet for this connection should be a sensor packet that contains the MacAddress of the device.
-	sensor, err := sensor_server.DecodeNetworkPacket(p.Body)
+	sensorPacket, err := sensor_server.DecodeNetworkPacket(h.config.SensorMap, p.Body)
 	if err != nil {
 		fmt.Println("Failed to decode sensor packet:", err)
 		c.Stop(xtcp.StopGracefullyAndWait)
 		return
 	}
 
-	if len(sensor.Values) == 1 && sensor.Values[0].Sensor.IsMac() {
-		value := uint64(sensor.Values[0].Value)
-		valueBytes := []byte{byte(value >> 0), byte(value >> 8), byte(value >> 16), byte(value >> 24), byte(value >> 32), byte(value >> 40), byte(value >> 48), byte(value >> 56)}
-		macAddress := fmt.Sprintf("%02X:%02X:%02X:%02X:%02X:%02X", valueBytes[0], valueBytes[1], valueBytes[2], valueBytes[3], valueBytes[4], valueBytes[5])
-
-		// Find the device with this macAddress
-		if index, ok := h.config.DevicesMap[macAddress]; ok {
-			c.UserData = int32(index) // Mark that we have received the sensor packet.
-			h.storage.RegisterDevice(c.UserData)
-			if sensor.IsTimeSync {
-				fmt.Println("Handling time sync for device:", h.config.Devices[index].Name)
-				h.storage.ProcessTimeSync(c.UserData, sensor.TimeSync)
-			}
-			fmt.Println("Registered device:", h.config.Devices[index].Name)
-		} else {
-			// This device is not registered, close this connection
-			fmt.Println("Unknown device with MacAddress:", macAddress)
-			c.Stop(xtcp.StopGracefullyAndWait)
-		}
-	} else {
-		if c.UserData >= 0 {
-			if sensor.IsTimeSync {
-				fmt.Println("Handling time sync for device:", h.config.Devices[c.UserData].Name)
-				h.storage.ProcessTimeSync(c.UserData, sensor.TimeSync)
-			}
-			for _, v := range sensor.Values {
-				sensorIndex := h.storage.RegisterSensor(c.UserData, v.Sensor)
-				if sensorIndex >= 0 {
-					h.storage.WriteSensorValue(c.UserData, sensorIndex, sensor.TimeSync, v)
-				}
+	if c.UserData >= 0 {
+		for _, v := range sensorPacket.Values {
+			sensorIndex := h.storage.RegisterSensor(v.Sensor)
+			if sensorIndex >= 0 {
+				h.storage.WriteSensorValue(sensorIndex, sensorPacket.Time, v)
 			}
 		}
 	}

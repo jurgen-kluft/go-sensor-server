@@ -11,8 +11,8 @@ type SensorServerConfig struct {
 	StoragePath          string                //
 	TcpPort              int                   //
 	FlushPeriodInSeconds int                   // how many seconds before we flush all sensor data again
-	Devices              []*SensorDeviceConfig //
-	DevicesMap           map[string]int        // map from Mac address to store Index
+	Sensors              []*SensorConfig       //
+	SensorMap            map[int]*SensorConfig //
 }
 
 func newSensorServerConfig() *SensorServerConfig {
@@ -20,8 +20,8 @@ func newSensorServerConfig() *SensorServerConfig {
 		StoragePath:          "",
 		TcpPort:              0,
 		FlushPeriodInSeconds: 15 * 60, // Every 15 minutes, flush to disk
-		Devices:              nil,
-		DevicesMap:           make(map[string]int),
+		Sensors:              nil,
+		SensorMap:            make(map[int]*SensorConfig),
 	}
 }
 
@@ -62,42 +62,109 @@ func decodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig 
 		"storage":  func(decoder *corepkg.JsonDecoder) { object.StoragePath = decoder.DecodeString() },
 		"tcp_port": func(decoder *corepkg.JsonDecoder) { object.TcpPort = int(decoder.DecodeInt32()) },
 		"flush":    func(decoder *corepkg.JsonDecoder) { object.FlushPeriodInSeconds = int(decoder.DecodeInt32()) },
-		"devices": func(decoder *corepkg.JsonDecoder) {
-			object.Devices = make([]*SensorDeviceConfig, 0, 4)
+		"sensors": func(decoder *corepkg.JsonDecoder) {
+			object.Sensors = make([]*SensorConfig, 0, 4)
 			for !decoder.ReadUntilArrayEnd() {
-				object.Devices = append(object.Devices, newSensorStoreConfig())
-				decodeSensorStoreConfig(decoder, object.Devices[len(object.Devices)-1])
+				sensor := NewSensorConfig(0, "", Unknown, TypeNone, 0)
+				object.Sensors = append(object.Sensors, sensor)
+				decodeSensorConfig(decoder, sensor)
 			}
 		},
 	}
-
 	decoder.Decode(fields)
 
-	// Create the map from Mac address to store Index
-	object.DevicesMap = make(map[string]int)
-	for i, store := range object.Devices {
-		object.DevicesMap[store.Mac] = i
+	for _, sensor := range object.Sensors {
+		if sensor.Index() >= 0 {
+			object.SensorMap[sensor.Index()] = sensor
+		}
 	}
 
 	return object
 }
 
-type SensorDeviceConfig struct {
-	Mac  string
-	Name string
+type SensorConfig struct {
+	mIndex     int
+	mName      string
+	mType      SensorType
+	mFieldType SensorFieldType
+	mFrequency int32
 }
 
-func newSensorStoreConfig() *SensorDeviceConfig {
-	return &SensorDeviceConfig{
-		Mac:  "",
-		Name: "",
+func NewSensorConfig(index int, name string, sensorType SensorType, fieldType SensorFieldType, frequency int32) *SensorConfig {
+	return &SensorConfig{
+		mIndex:     index,
+		mName:      name,
+		mType:      sensorType,
+		mFieldType: fieldType,
+		mFrequency: frequency,
 	}
 }
 
-func decodeSensorStoreConfig(decoder *corepkg.JsonDecoder, object *SensorDeviceConfig) {
+func decodeSensorConfig(decoder *corepkg.JsonDecoder, object *SensorConfig) {
 	fields := map[string]corepkg.JsonDecode{
-		"mac":  func(decoder *corepkg.JsonDecoder) { object.Mac = decoder.DecodeString() },
-		"name": func(decoder *corepkg.JsonDecoder) { object.Name = decoder.DecodeString() },
+		"index": func(decoder *corepkg.JsonDecoder) { object.mIndex = int(decoder.DecodeInt32()) },
+		"name":  func(decoder *corepkg.JsonDecoder) { object.mName = decoder.DecodeString() },
+		"type": func(decoder *corepkg.JsonDecoder) {
+			sensorTypeName := decoder.DecodeString()
+			if st, ok := SensorNameToSensorTypeMap[sensorTypeName]; ok {
+				object.mType = st
+			} else {
+				object.mType = Unknown
+			}
+		},
+		"field_type": func(decoder *corepkg.JsonDecoder) {
+			fieldTypeName := decoder.DecodeString()
+			if ft, ok := SensorFieldNameToSensorFieldTypeMap[fieldTypeName]; ok {
+				object.mFieldType = ft
+			} else {
+				object.mFieldType = TypeNone
+			}
+		},
+		"frequency": func(decoder *corepkg.JsonDecoder) { object.mFrequency = decoder.DecodeInt32() },
 	}
 	decoder.Decode(fields)
+}
+
+func (t SensorConfig) Name() string {
+	return t.mName
+}
+
+func (t SensorConfig) FullIdentifier() uint64 {
+	return (uint64(t.mFieldType)<<8)&0xFF | uint64(t.mType)&0xFF | ((uint64(t.mFrequency) << 32) & 0xFFFFFFFF00000000)
+}
+
+func (t SensorConfig) SizeInBits() int {
+	return int(t.mFieldType) & 0x7F
+}
+
+func (t SensorConfig) Index() int {
+	return int(t.mType)
+}
+
+func (t SensorConfig) IsValid() bool {
+	return t.mType != Unknown
+}
+
+func (t SensorConfig) IsBattery() bool {
+	return t.mType == Battery
+}
+
+func (t SensorConfig) String() string {
+	return t.mName
+}
+
+func (t SensorConfig) SampleFrequency() int32 {
+	return t.mFrequency
+}
+
+func (t SensorConfig) SamplePeriodInMs() int32 {
+	return 60 * 60 * 1000 / t.mFrequency
+}
+
+func (t SensorConfig) Type() SensorType {
+	return t.mType
+}
+
+func (t SensorConfig) FieldType() SensorFieldType {
+	return t.mFieldType
 }

@@ -1,0 +1,53 @@
+{
+	"storage": "$HOME/sensor-server/appartment",
+	"tcp_port": 31339,
+	"flush": 60,
+	"sensors": [
+		{"index": 0, "name": "frontdoor", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 1, "name": "hallway_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
+
+		{"index": 16,"name": "kitchen_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
+		{"index": 28,"name": "kitchen_left_window", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 29,"name": "kitchen_right_window", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 30,"name": "kitchen_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
+		{"index": 31,"name": "kitchen_temperature", "type": "temperature", "field_type": "s8", "frequency": 12},
+		{"index": 32,"name": "kitchen_humidity", "type": "humidity", "field_type": "s8", "frequency": 12},
+		{"index": 33,"name": "kitchen_co", "type": "co", "field_type": "s16", "frequency": 30},
+
+		{"index": 34,"name": "bathroom_door", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 36,"name": "bathroom_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
+		{"index": 37,"name": "bathroom_temperature", "type": "temperature", "field_type": "s8", "frequency": 12},
+		{"index": 38,"name": "bathroom_humidity", "type": "humidity", "field_type": "s8", "frequency": 12},
+
+		{"index": 39,"name": "livingroom_balcony_door", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 41,"name": "livingroom_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
+		{"index": 42,"name": "livingroom_temperature", "type": "temperature", "field_type": "s8", "frequency": 12},
+		{"index": 43,"name": "livingroom_humidity", "type": "humidity", "field_type": "s8", "frequency": 12},
+		{"index": 44,"name": "livingroom_luminance", "type": "light", "field_type": "s16", "frequency": 120},
+
+		{"index": 65, "name": "sophiaroom_door", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 66, "name": "sophiaroom_window", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 67, "name": "sophiaroom_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
+		{"index": 68, "name": "sophiaroom_temperature", "type": "temperature", "field_type": "s8", "frequency": 12},
+		{"index": 69, "name": "sophiaroom_humidity", "type": "humidity", "field_type": "s8", "frequency": 12},
+		{"index": 70, "name": "sophiaroom_luminance", "type": "light", "field_type": "s16", "frequency": 120},
+		{"index": 71, "name": "sophiaroom_co2", "type": "co2", "field_type": "s16", "frequency": 60},
+
+		{"index": 75, "name": "jenniferroom_door", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 76, "name": "jenniferroom_window", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 77, "name": "jenniferroom_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
+		{"index": 78, "name": "jenniferroom_temperature", "type": "temperature", "field_type": "s8", "frequency": 12},
+		{"index": 79, "name": "jenniferroom_humidity", "type": "humidity", "field_type": "s8", "frequency": 12},
+		{"index": 80, "name": "jenniferroom_luminance", "type": "light", "field_type": "s16", "frequency": 120},
+		{"index": 81, "name": "jenniferroom_co2", "type": "co2", "field_type": "s16", "frequency": 60},
+
+		{"index": 142,"name": "mainbedroom_door", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 143,"name": "mainbedroom_balcony_door", "type": "openclose", "field_type": "u1", "frequency": 3600},
+		{"index": 144,"name": "mainbedroom_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
+		{"index": 145,"name": "mainbedroom_temperature", "type": "temperature", "field_type": "s8", "frequency": 12},
+		{"index": 146,"name": "mainbedroom_humidity", "type": "humidity", "field_type": "s8", "frequency": 12},
+		{"index": 147,"name": "mainbedroom_luminance", "type": "light", "field_type": "s16", "frequency": 120},
+		{"index": 148,"name": "mainbedroom_co2", "type": "co2", "field_type": "s16", "frequency": 60},
+		{"index": 149,"name": "mainbedroom_bathroom_door", "type": "openclose", "field_type": "u1", "frequency": 3600}
+	]
+}

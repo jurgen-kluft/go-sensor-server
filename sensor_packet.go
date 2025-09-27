@@ -3,6 +3,7 @@ package sensor_server
 import (
 	"encoding/binary"
 	"fmt"
+	"time"
 )
 
 // Note: Little Endian byte order
@@ -10,15 +11,13 @@ import (
 // {
 //     u8  length;    // Number of words in the packet
 //     u8  version;   // Packet version (currently 1)
-//     u16 id;        // Fixed ID 0xA5C3
-//     u32 timesync;  // TimeSync value of the packet (bit 31 indicates if this packet is a time-sync packet)
 //
 //     // sensor value 1
-//     u8 type;
+//     u8 id;             // sensor id
 //     s8|s16|s32 value;  // depending on type
 //
 //     // sensor value 2
-//     u8 type;
+//     u8 id;             // sensor id
 //     s8|s16|s32 value;  // depending on type
 //
 //     ...
@@ -29,23 +28,18 @@ import (
 const (
 	SensorPacketLengthOffset  = 0
 	SensorPacketVersionOffset = 1
-	SensorPacketIdOffset      = 2
-	SensorPacketTimeOffset    = 4
-	SensorPacketHeaderSize    = 1 + 1 + 2 + 4 // length, version, time-sync
-	SensorPacketId            = 0xA5C3
+	SensorPacketHeaderSize    = 1 + 1 // length, version, time-sync
 )
 
 type SensorPacket struct {
-	Length     uint16
-	Version    uint8
-	Id         uint16
-	TimeSync   uint32
-	IsTimeSync bool
-	Values     []SensorValue
+	Length  uint16
+	Version uint8
+	Time    time.Time
+	Values  []SensorValue
 }
 
 type SensorValue struct {
-	Sensor Sensor
+	Sensor *SensorConfig
 	Value  int64
 }
 
@@ -53,27 +47,19 @@ func (v *SensorValue) IsZero() bool {
 	return v.Value == 0
 }
 
-func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
+func DecodeNetworkPacket(sensorMap map[int]*SensorConfig, data []byte) (SensorPacket, error) {
 	if len(data) < 8 {
 		return SensorPacket{}, fmt.Errorf("sensor packet, size too small")
 	}
 
 	pkt := SensorPacket{
-		Length:   uint16(data[SensorPacketLengthOffset] * 2),
-		Version:  uint8(data[SensorPacketVersionOffset]),
-		Id:       uint16(data[SensorPacketIdOffset]) | (uint16(data[SensorPacketIdOffset+1]) << 8),
-		TimeSync: uint32(data[SensorPacketTimeOffset]) | (uint32(data[SensorPacketTimeOffset+1]) << 8) | (uint32(data[SensorPacketTimeOffset+2]) << 16) | (uint32(data[SensorPacketTimeOffset+3]) << 24),
-		Values:   nil,
+		Length:  uint16(data[SensorPacketLengthOffset] * 2),
+		Version: uint8(data[SensorPacketVersionOffset]),
+		Time:    time.Now(),
+		Values:  nil,
 	}
 
 	if pkt.Version == 1 {
-		if pkt.Id != SensorPacketId {
-			return pkt, fmt.Errorf("sensor packet, invalid id 0x%04X", pkt.Id)
-		}
-
-		pkt.IsTimeSync = (pkt.TimeSync & 0x80000000) != 0
-		pkt.TimeSync = pkt.TimeSync & 0x7FFFFFFF
-
 		if len(data) < int(pkt.Length) {
 			return pkt, fmt.Errorf("sensor packet, unexpected data length, %d != %d", len(data), pkt.Length)
 		}
@@ -83,9 +69,9 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 		// Compute the number of sensor values in the packet.
 		numberOfValues := 0
 		for offset <= int(pkt.Length)-2 {
-			sensorType := SensorType(data[offset])
-			if sensor, ok := SensorTypeToSensorMap[sensorType]; !ok {
-				return pkt, fmt.Errorf("sensor packet, unknown sensor type %d", sensorType)
+			index := int(uint(data[offset]))
+			if sensor, ok := sensorMap[index]; !ok {
+				return pkt, fmt.Errorf("sensor packet, unknown sensor index %d", index)
 			} else {
 				offset += 1 + ((sensor.SizeInBits() + 7) / 8)
 				numberOfValues++
@@ -97,8 +83,8 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 		offset = SensorPacketHeaderSize
 
 		for offset <= int(pkt.Length)-2 {
-			sensorType := SensorType(data[offset])
-			sensor, _ := SensorTypeToSensorMap[sensorType]
+			index := int(uint(data[offset]))
+			sensor, _ := sensorMap[index]
 			value := SensorValue{Sensor: sensor}
 
 			offset += 1
@@ -106,7 +92,7 @@ func DecodeNetworkPacket(data []byte) (SensorPacket, error) {
 			// depending on FieldType, read the appropriate value.
 			// the written values are in little-endian format
 			switch sensor.FieldType() {
-			case TypeS8, TypeU8:
+			case TypeS8, TypeU8, TypeU1, TypeU2:
 				value.Value = int64(data[offset])
 				pkt.Values = append(pkt.Values, value)
 				offset += 1
@@ -139,7 +125,7 @@ func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
 	length := SensorPacketHeaderSize
 	for _, v := range pkt.Values {
 		if v.Sensor.SizeInBits() == 0 {
-			return nil, fmt.Errorf("sensor packet, unknown field type for sensor type %d", v.Sensor.Name())
+			return nil, fmt.Errorf("sensor packet, unknown field type for sensor %s", v.Sensor.Name())
 		}
 		length += 1 + ((v.Sensor.SizeInBits() + 7) / 8)
 	}
@@ -152,17 +138,6 @@ func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
 
 	data[SensorPacketLengthOffset] = uint8(length / 2)
 	data[SensorPacketVersionOffset] = pkt.Version
-	data[SensorPacketIdOffset] = uint8(pkt.Id & 0xFF)
-	data[SensorPacketIdOffset+1] = uint8((pkt.Id >> 8) & 0xFF)
-	// Write the time-sync value
-	timeSync := pkt.TimeSync & 0x7FFFFF
-	if pkt.IsTimeSync {
-		timeSync = timeSync | 0x800000
-	}
-	data[SensorPacketTimeOffset] = uint8(timeSync & 0xFF)
-	data[SensorPacketTimeOffset+1] = uint8((timeSync >> 8) & 0xFF)
-	data[SensorPacketTimeOffset+2] = uint8((timeSync >> 16) & 0xFF)
-	data[SensorPacketTimeOffset+3] = uint8((timeSync >> 24) & 0xFF)
 
 	offset := SensorPacketHeaderSize
 	for _, v := range pkt.Values {
@@ -182,6 +157,12 @@ func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
 		case TypeS64:
 			binary.LittleEndian.PutUint64(data[offset:offset+8], uint64(v.Value))
 			offset += 8
+		case TypeU1:
+			data[offset] = byte(v.Value & 0x1)
+			offset += 1
+		case TypeU2:
+			data[offset] = byte(v.Value & 0x3)
+			offset += 1
 		case TypeU8:
 			data[offset] = byte(v.Value & 0xFF)
 			offset += 1

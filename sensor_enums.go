@@ -1,7 +1,5 @@
 package sensor_server
 
-import "strings"
-
 type SensorType uint8
 
 // Note: The values must match the SensorType enum in the firmware.
@@ -23,15 +21,16 @@ const (
 	UV          SensorType = 0x0B // (s16, index)
 	CO          SensorType = 0x0C // (s16, ppm)
 	Vibration   SensorType = 0x0D // (s8,  <=16=none, <=64=low, <=128=medium, <=192=high, <=255=extreme)
-	State       SensorType = 0x0E // (s32 (u8[4]), sensor model, sensor state)
-	MacAddress  SensorType = 0x0F // (u64, MAC address)
+	OpenClose   SensorType = 0x0E // (u8, 0=none, 1=open, 2=close)
 	Presence1   SensorType = 0x10 // (u8, 0=none, 1=trigger up/down, 2=presence)
 	Presence2   SensorType = 0x11 // (u8, 0=none, 1=trigger up/down, 2=presence)
 	Presence3   SensorType = 0x12 // (u8, 0=none, 1=trigger up/down, 2=presence)
 	Distance1   SensorType = 0x13 // (u16, cm)
 	Distance2   SensorType = 0x14 // (u16, cm)
 	Distance3   SensorType = 0x15 // (u16, cm)
-	SensorCount            = 0x17 // The maximum number of sensor types (highest index + 1)
+	Battery     SensorType = 0x16 // (u8, battery level 0-100%)
+	State       SensorType = 0x17 // (s32 (u8[4]), sensor model, sensor state)
+	SensorCount            = 0x18 // The maximum number of sensor types (highest index + 1)
 )
 
 type SensorState uint8
@@ -46,7 +45,8 @@ type SensorFieldType uint8
 
 const (
 	TypeNone SensorFieldType = 0x00
-	TypeBit  SensorFieldType = 0x01
+	TypeU1   SensorFieldType = 0x01
+	TypeU2   SensorFieldType = 0x02
 	TypeS8   SensorFieldType = 0x08
 	TypeS16  SensorFieldType = 0x10
 	TypeS32  SensorFieldType = 0x20
@@ -57,28 +57,18 @@ const (
 	TypeU64  SensorFieldType = 0xC0
 )
 
-var SensorTypeToSensorMap map[SensorType]Sensor = map[SensorType]Sensor{
-	Temperature: {mName: "temperature", mType: Temperature, mField: TypeS8, mFreq: 12},
-	Humidity:    {mName: "humidity", mType: Humidity, mField: TypeS8, mFreq: 12},
-	Pressure:    {mName: "pressure", mType: Pressure, mField: TypeS16, mFreq: 12},
-	Light:       {mName: "light", mType: Light, mField: TypeS16, mFreq: 120},
-	CO2:         {mName: "co2", mType: CO2, mField: TypeS16, mFreq: 60},
-	VOC:         {mName: "voc", mType: VOC, mField: TypeS16, mFreq: 30},
-	PM1_0:       {mName: "pm1_0", mType: PM1_0, mField: TypeS16, mFreq: 30},
-	PM2_5:       {mName: "pm2_5", mType: PM2_5, mField: TypeS16, mFreq: 30},
-	PM10:        {mName: "pm10", mType: PM10, mField: TypeS16, mFreq: 30},
-	Noise:       {mName: "noise", mType: Noise, mField: TypeS8, mFreq: 60},
-	UV:          {mName: "uv", mType: UV, mField: TypeS8, mFreq: 30},
-	CO:          {mName: "co", mType: CO, mField: TypeS8, mFreq: 30},
-	Vibration:   {mName: "vibration", mType: Vibration, mField: TypeS8, mFreq: 3600},
-	State:       {mName: "state", mType: State, mField: TypeS16, mFreq: 12},
-	MacAddress:  {mName: "macaddress", mType: MacAddress, mField: TypeU64, mFreq: 1},
-	Presence1:   {mName: "presence1", mType: Presence1, mField: TypeS8, mFreq: 7200},
-	Presence2:   {mName: "presence2", mType: Presence2, mField: TypeS8, mFreq: 7200},
-	Presence3:   {mName: "presence3", mType: Presence3, mField: TypeS8, mFreq: 7200},
-	Distance1:   {mName: "distance1", mType: Distance1, mField: TypeS16, mFreq: 7200},
-	Distance2:   {mName: "distance2", mType: Distance2, mField: TypeS16, mFreq: 7200},
-	Distance3:   {mName: "distance3", mType: Distance3, mField: TypeS16, mFreq: 7200},
+var SensorFieldNameToSensorFieldTypeMap map[string]SensorFieldType = map[string]SensorFieldType{
+	"none": TypeNone,
+	"u1":   TypeU1,
+	"u2":   TypeU2,
+	"s8":   TypeS8,
+	"s16":  TypeS16,
+	"s32":  TypeS32,
+	"s64":  TypeS64,
+	"u8":   TypeU8,
+	"u16":  TypeU16,
+	"u32":  TypeU32,
+	"u64":  TypeU64,
 }
 
 var SensorNameToSensorTypeMap map[string]SensorType = map[string]SensorType{
@@ -95,73 +85,13 @@ var SensorNameToSensorTypeMap map[string]SensorType = map[string]SensorType{
 	"uv":          UV,
 	"co":          CO,
 	"vibration":   Vibration,
-	"state":       State,
-	"macaddress":  MacAddress,
+	"openclose":   OpenClose,
 	"presence1":   Presence1,
 	"presence2":   Presence2,
 	"presence3":   Presence3,
 	"distance1":   Distance1,
 	"distance2":   Distance2,
 	"distance3":   Distance3,
-}
-
-type Sensor struct {
-	mName  string          // sensor name, e.g. "temperature"
-	mType  SensorType      // sensor type
-	mField SensorFieldType // data field type
-	mFreq  int32           // samples per hour
-}
-
-func NewSensorByName(name string) Sensor {
-	name = strings.ToLower(name)
-	if st, ok := SensorNameToSensorTypeMap[name]; ok {
-		if sensor, ok := SensorTypeToSensorMap[st]; ok {
-			return sensor
-		}
-	}
-	return Sensor{mName: "unknown", mType: Unknown, mField: TypeNone, mFreq: 0}
-}
-
-func (t Sensor) Name() string {
-	return t.mName
-}
-
-func (t Sensor) FullIdentifier() uint64 {
-	return (uint64(t.mField)<<8)&0xFF | uint64(t.mType)&0xFF | ((uint64(t.mFreq) << 32) & 0xFFFFFFFF00000000)
-}
-
-func (t Sensor) SizeInBits() int {
-	return int(t.mField) & 0x7F
-}
-
-func (st Sensor) Index() int {
-	return int(st.mType)
-}
-
-func (st Sensor) IsValid() bool {
-	return st.mType != Unknown
-}
-
-func (st Sensor) IsMac() bool {
-	return st.mType == MacAddress
-}
-
-func (st Sensor) String() string {
-	return st.mName
-}
-
-func (st Sensor) SampleFrequency() int32 {
-	return st.mFreq
-}
-
-func (st Sensor) SamplePeriodInMs() int32 {
-	return 60 * 60 * 1000 / st.mFreq
-}
-
-func (st Sensor) Type() SensorType {
-	return st.mType
-}
-
-func (st Sensor) FieldType() SensorFieldType {
-	return st.mField
+	"battery":     Battery,
+	"state":       State,
 }

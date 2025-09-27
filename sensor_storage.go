@@ -19,16 +19,14 @@ import (
 // One sensor store for [DeviceLocation | SensorType]
 // DeviceLocation is associated with
 type sensorStream struct {
-	device    *sensorDevice      // The parent device (device)
-	sensor    Sensor             // Sensor for this stream
+	sensor    *SensorConfig      // Sensor for this stream
 	reference time.Time          // Reference time for this stream
 	today     *sensorStreamBlock // Data block for today
 	yesterday *sensorStreamBlock // Data block for yesterday
 }
 
-func newSensorStream(device *sensorDevice, sensor Sensor) *sensorStream {
+func newSensorStream(sensor *SensorConfig) *sensorStream {
 	return &sensorStream{
-		device:    device,
 		sensor:    sensor,
 		reference: time.Time{},
 		today:     nil,
@@ -57,13 +55,14 @@ const (
 	SensorDataBlockHeaderSize = 64 // Size of the header in bytes
 )
 
-func newSensorStreamBlock(stream *sensorStream, sensor Sensor, content []byte) *sensorStreamBlock {
+func newSensorStreamBlock(stream *sensorStream, content []byte) *sensorStreamBlock {
 	// Construct the correct time for the start of this block
 	t := time.Now()
 	blockTime := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 
 	// TODO This datablock might already exist on disk, load it instead of creating a new one.
 	//      This can happen when the server crashes and/or restarts during the day.
+	sensor := stream.sensor
 	sampleFreq := sensor.SampleFrequency()
 	blockSizeInBytes := (int(sampleFreq*24)*int(sensor.SizeInBits()) + 7) / 8
 	blockSizeInBytes = blockSizeInBytes + SensorDataBlockHeaderSize
@@ -124,10 +123,14 @@ func (s *sensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, sen
 
 	// Write the sensor value to the buffer based on its type
 	switch sensor.FieldType() {
-	case TypeBit:
+	case TypeU1:
 		byteIndex := SensorDataBlockHeaderSize + (sampleIndex / 8)
 		bitIndex := sampleIndex % 8
 		s.Content[byteIndex] |= (1 << bitIndex) // Set the bit
+	case TypeU2:
+		byteIndex := SensorDataBlockHeaderSize + (sampleIndex / 4)
+		bitIndex := sampleIndex % 4
+		s.Content[byteIndex] |= byte((sensorValue.Value & 3) << bitIndex) // Set the bit
 	case TypeS8:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex
 		s.Content[byteIndex] = byte(sensorValue.Value)
@@ -158,24 +161,10 @@ func (s *sensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, sen
 	s.isModified.Add(1)
 }
 
-// sensorDevice represents a device of sensors, typically associated with a device
-type sensorDevice struct {
-	config        *SensorDeviceConfig // Configuration for this sensor device
-	sensorStreams []*sensorStream     // Active data streams
-}
-
-func newSensorGroup(config *SensorDeviceConfig) *sensorDevice {
-	return &sensorDevice{
-		config:        config,
-		sensorStreams: make([]*sensorStream, SensorCount),
-	}
-}
-
 type SensorStorage struct {
 	config            *SensorServerConfig     // Configuration for the sensor storage
-	deviceConfigList  []*SensorDeviceConfig   // List of sensor device configurations
-	macToDeviceIndex  map[string]int          // Map from sensor name to ID
-	devices           []*sensorDevice         // Active groups (devices)
+	sensorList        []*SensorConfig         // List of sensors
+	sensorStreams     []*sensorStream         // List of sensor streams indexed by sensor index
 	writeChannel      chan *sensorStreamBlock // Channel for writing data blocks
 	blockHeaderBuffer bytes.Buffer            //
 	blockHeaderWriter io.Writer               //
@@ -188,8 +177,6 @@ type SensorStorage struct {
 func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 	storage := &SensorStorage{
 		config:            config,
-		macToDeviceIndex:  make(map[string]int),
-		devices:           nil,
 		writeChannel:      make(chan *sensorStreamBlock, 64),
 		blockHeaderBuffer: bytes.Buffer{},
 		blockHeaderWriter: nil,
@@ -198,13 +185,6 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 		flushQueue:        make([]*sensorStreamBlock, 0, 256),
 	}
 	storage.blockHeaderWriter = &storage.blockHeaderBuffer
-
-	storage.macToDeviceIndex = make(map[string]int, len(config.Devices))
-	storage.devices = make([]*sensorDevice, len(config.Devices))
-	for i, groupConfig := range config.Devices {
-		storage.devices[i] = newSensorGroup(groupConfig)
-		storage.macToDeviceIndex[groupConfig.Mac] = i
-	}
 
 	dirpath := config.StoragePath
 	// resolve any environment variables in the path
@@ -219,8 +199,8 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 	}
 
 	// Create subdirectories for each device and sensor type
-	for _, device := range storage.devices {
-		groupPath := path.Join(dirpath, device.config.Name)
+	for _, sensor := range storage.config.Sensors {
+		groupPath := path.Join(dirpath, sensor.Name())
 		if _, err := os.Stat(groupPath); os.IsNotExist(err) {
 			err := os.MkdirAll(groupPath, 0755)
 			if err != nil {
@@ -228,8 +208,8 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 				return nil
 			}
 		}
-		for _, sensor := range SensorTypeToSensorMap {
-			if !sensor.IsValid() || sensor.IsMac() {
+		for _, sensor := range storage.config.Sensors {
+			if !sensor.IsValid() {
 				continue
 			}
 			sensorPath := path.Join(groupPath, sensor.Name())
@@ -243,17 +223,15 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 		}
 	}
 
-	// Initialize the sensor streams for each device
-	for _, device := range storage.devices {
-		for _, sensor := range SensorTypeToSensorMap {
-			if !sensor.IsValid() || sensor.IsMac() {
-				continue
-			}
-
-			sensorStream := newSensorStream(device, sensor)
-			device.sensorStreams[sensor.Index()] = sensorStream
-			storage.setupSensorStream(sensorStream)
+	// Initialize the sensor stream for each sensor
+	for _, sensor := range storage.config.Sensors {
+		if !sensor.IsValid() {
+			continue
 		}
+
+		sensorStream := newSensorStream(sensor)
+		storage.sensorStreams[sensor.Index()] = sensorStream
+		storage.setupSensorStream(sensorStream)
 	}
 
 	// The go-routine that writes data blocks to the file system
@@ -276,21 +254,19 @@ func (s *SensorStorage) Shutdown() {
 	time.Sleep(1 * time.Second) // Give some time for the flush go-routine to finish
 
 	// Flush all blocks to disk
-	for _, device := range s.devices {
-		for _, sensorStream := range device.sensorStreams {
-			if sensorStream.today != nil {
-				count := sensorStream.today.isModified.Load()
-				if count > 0 {
-					sensorStream.today.isModified.Add(-count)
-					s.writeChannel <- sensorStream.today
-				}
+	for _, sensorStream := range s.sensorStreams {
+		if sensorStream.today != nil {
+			count := sensorStream.today.isModified.Load()
+			if count > 0 {
+				sensorStream.today.isModified.Add(-count)
+				s.writeChannel <- sensorStream.today
 			}
-			if sensorStream.yesterday != nil {
-				count := sensorStream.yesterday.isModified.Load()
-				if count > 0 {
-					sensorStream.yesterday.isModified.Add(-count)
-					s.writeChannel <- sensorStream.yesterday
-				}
+		}
+		if sensorStream.yesterday != nil {
+			count := sensorStream.yesterday.isModified.Load()
+			if count > 0 {
+				sensorStream.yesterday.isModified.Add(-count)
+				s.writeChannel <- sensorStream.yesterday
 			}
 		}
 	}
@@ -402,83 +378,36 @@ func schedulePeriodicFlush(s *SensorStorage, interval time.Duration) {
 	}()
 }
 
-func (s *SensorStorage) RegisterDevice(deviceIndex int32) {
-	if deviceIndex < 0 || int(deviceIndex) >= len(s.devices) {
-		return // Invalid device index
-	}
-	// Device is already registered, nothing to do
-}
-
 // RegisterSensor registers a sensor and returns its ID.
 // Note: If this sensor type was not configured as part of the sensor device, -1 is returned.
-func (s *SensorStorage) RegisterSensor(deviceIndex int32, sensor Sensor) int32 {
-	sensorGroup := s.devices[deviceIndex]
+func (s *SensorStorage) RegisterSensor(sensor *SensorConfig) int32 {
 	sensorIndex := sensor.Index()
-	if sensorGroup.sensorStreams[sensorIndex] != nil {
+	if s.sensorStreams[sensorIndex] != nil {
 		return int32(sensorIndex)
 	}
 	return -1
 }
 
-func (s *SensorStorage) ProcessTimeSync(deviceIndex int32, packetTimeSync uint32) {
-	device := s.devices[deviceIndex]
-	if device == nil {
-		return
-	}
-
-	// Current time
-	now := time.Now()
-
-	log.LogInfof("TimeSync: device=%s, timeSync=%d", device.config.Name, packetTimeSync)
-
-	for _, sensorStream := range s.devices[deviceIndex].sensorStreams {
-		if sensorStream == nil {
-			continue
-		}
-
-		// When this packet was marked as a time sync packet, we can update the reference time.
-		// Also the packet time is the reference time, however the sender may have a guesstimate
-		// on the transfer time of the packet, so we subtract that from the today time.
-		sensorStream.reference = now.Add(-time.Duration(packetTimeSync*25) * time.Millisecond)
-	}
-}
-
-func (s *SensorStorage) WriteSensorValue(deviceIndex int32, sensorStreamIndex int32, packetTimeSync uint32, sensorValue SensorValue) error {
+func (s *SensorStorage) WriteSensorValue(sensorIndex int32, packetTime time.Time, sensorValue SensorValue) error {
 	// Create or get the data block for the given location and sensor type
-	device := s.devices[deviceIndex]
-	if device == nil {
-		return log.LogErr(fmt.Errorf("sensor device is nil"), "device index: ", string(deviceIndex))
-	}
-
-	sensorStream := device.sensorStreams[sensorStreamIndex]
+	sensorConfig := s.config.Sensors[sensorIndex]
+	sensorStream := s.sensorStreams[sensorIndex]
 	if sensorStream == nil {
-		return log.LogErr(fmt.Errorf("sensor sensorStream is nil, not registered"), "device: ", device.config.Name, "stream index: ", string(sensorStreamIndex))
+		return log.LogErr(fmt.Errorf("sensor sensorStream is nil, not registered"), "sensor: ", sensorConfig.Name(), "index: ", string(sensorConfig.Index()))
 	}
 
 	// Current time
 	now := time.Now()
 
-	log.LogInfof("WriteSensorValue: device=%s, sensor=%s, value=%d", device.config.Name, sensorStream.sensor.Name(), sensorValue.Value)
+	log.LogInfof("WriteSensorValue: sensor=%s, value=%d", sensorConfig.Name(), sensorValue.Value)
 
 	// Update the sensor stream (check if day has changed, etc..)
 	s.activeSensorStream(sensorStream, now)
 
-	// Figure out the sensorStreamBlock:
-	//   We should know the reference time of this session, with (packetTimeSync / 40) seconds accuracy.
-	//   With that information we can figure out the sensorStreamBlock and the SampleIndex within that block.
-	//   We only need to keep two SensorDataBlocks in memory, today and yesterday.
-	packetTime := now
-	// If we do not have a reference time yet then we are unable to figure out the time for this packet.
-	// So we can do nothing else then dropping this packet.
-	if sensorStream.reference.IsZero() {
-		return log.LogErr(fmt.Errorf("sensor stream reference time is zero, cannot store packet"), "device: ", device.config.Name, "sensor: ", sensorStream.sensor.Name())
-	}
-	packetTime = sensorStream.reference.Add(time.Duration(packetTimeSync*25) * time.Millisecond)
-
 	if packetTime.Before(sensorStream.today.Time) {
 		// If packet is really old (which should not happen) then we drop it
 		if packetTime.Before(sensorStream.yesterday.Time) {
-			return log.LogErr(fmt.Errorf("sensor stream packet time is before yesterday block, dropping packet"), "device: ", device.config.Name, "sensor: ", sensorStream.sensor.Name())
+			return log.LogErr(fmt.Errorf("sensor stream packet time is before yesterday block, dropping packet"), "sensor name: ", sensorConfig.Name(), "sensor index: ", string(sensorConfig.Index()))
 		}
 		// Write to the yesterday block if it exists and the time fits
 		if packetTime.After(sensorStream.yesterday.Time) {
@@ -503,7 +432,7 @@ func (s *SensorStorage) WriteSensorValue(deviceIndex int32, sensorStreamIndex in
 func (s *SensorStorage) getStreamBlockFilepath(stream *sensorStream, time time.Time) string {
 	storePathFilename := fmt.Sprintf("%04d_%02d_%02d.data", time.Year(), time.Month(), time.Day())
 	streamSensorName := stream.sensor.Name()
-	storeFullFilepath := path.Join(s.config.StoragePath, stream.device.config.Name, streamSensorName, storePathFilename)
+	storeFullFilepath := path.Join(s.config.StoragePath, stream.sensor.Name(), streamSensorName, storePathFilename)
 	storeFullFilepath = os.ExpandEnv(storeFullFilepath)
 	return storeFullFilepath
 }
@@ -571,9 +500,9 @@ func (s *SensorStorage) loadSensorDataBlockContent(stream *sensorStream, time ti
 func (s *SensorStorage) setupSensorStream(sensorStream *sensorStream) error {
 	today := time.Now()
 	if currentContent, err := s.loadSensorDataBlockContent(sensorStream, today); err == nil {
-		sensorStream.today = newSensorStreamBlock(sensorStream, sensorStream.sensor, currentContent)
+		sensorStream.today = newSensorStreamBlock(sensorStream, currentContent)
 	} else {
-		sensorStream.today = newSensorStreamBlock(sensorStream, sensorStream.sensor, nil)
+		sensorStream.today = newSensorStreamBlock(sensorStream, nil)
 	}
 
 	if sensorStream.today.Content != nil {
@@ -582,9 +511,9 @@ func (s *SensorStorage) setupSensorStream(sensorStream *sensorStream) error {
 
 	yesterday := today.AddDate(0, 0, -1)
 	if yesterdayContent, err := s.loadSensorDataBlockContent(sensorStream, yesterday); err == nil {
-		sensorStream.yesterday = newSensorStreamBlock(sensorStream, sensorStream.sensor, yesterdayContent)
+		sensorStream.yesterday = newSensorStreamBlock(sensorStream, yesterdayContent)
 	} else {
-		sensorStream.yesterday = newSensorStreamBlock(sensorStream, sensorStream.sensor, nil)
+		sensorStream.yesterday = newSensorStreamBlock(sensorStream, nil)
 	}
 
 	if sensorStream.yesterday.Content != nil {
@@ -606,7 +535,7 @@ func (s *SensorStorage) activeSensorStream(sensorStream *sensorStream, today tim
 			}
 		}
 		sensorStream.yesterday = sensorStream.today
-		sensorStream.today = newSensorStreamBlock(sensorStream, sensorStream.sensor, nil)
+		sensorStream.today = newSensorStreamBlock(sensorStream, nil)
 		s.flushChannel <- sensorStream.today
 	} else {
 		if sensorStream.today.Content == nil {
