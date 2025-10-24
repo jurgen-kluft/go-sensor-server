@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,19 +13,19 @@ import (
 
 type EchoHandler struct{}
 
-func (h *EchoHandler) OnAccept(c *xtcp.Conn) {
+func (h *EchoHandler) OnTcpAccept(c *xtcp.Conn) {
 	fmt.Println("OnAccept:", c.String())
 }
 
-func (h *EchoHandler) OnConnect(c *xtcp.Conn) {
+func (h *EchoHandler) OnTcpConnect(c *xtcp.Conn) {
 	fmt.Println("OnConnect:", c.String())
 }
 
-func (h *EchoHandler) OnRecv(c *xtcp.Conn, p xtcp.Packet) {
+func (h *EchoHandler) OnTcpRecv(c *xtcp.Conn, p xtcp.Packet) {
 	fmt.Println("OnRecv:", c.String(), "len:", len(p.Body))
 }
 
-func (h *EchoHandler) OnClose(c *xtcp.Conn) {
+func (h *EchoHandler) OnTcpClose(c *xtcp.Conn) {
 	fmt.Println("OnClose:", c.String())
 }
 
@@ -34,8 +35,9 @@ func main() {
 
 	handler := &EchoHandler{}
 	options := xtcp.NewOpts(handler).SetRecvBufSize(1024).SetAsyncWrite(true).SetSendBufListLen(1024)
+	logger := log.New(os.Stdout, "logger: ", log.Lshortfile)
 
-	srv := xtcp.NewServer(options)
+	srv := xtcp.NewServer(options, logger)
 	go srv.ListenAndServe(":31339")
 
 	// wait for signal to exit.

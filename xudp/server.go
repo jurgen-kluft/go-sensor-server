@@ -2,6 +2,7 @@ package xudp
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"sync"
 )
@@ -9,6 +10,7 @@ import (
 // Server used for running a tcp server.
 type Server struct {
 	Opts    *Options
+	logger  *log.Logger
 	stopped chan struct{}
 	wg      sync.WaitGroup
 	mu      sync.Mutex
@@ -42,7 +44,7 @@ func (s *Server) Serve(conn *net.UDPConn) {
 	s.conn = conn
 	s.mu.Unlock()
 
-	logger.Log(Info, "XUDP - Server listen on: ", conn.LocalAddr().String())
+	s.logger.Print("XUDP - Server listen on: ", conn.LocalAddr().String())
 
 	for {
 		var buf [1472]byte
@@ -55,7 +57,7 @@ func (s *Server) Serve(conn *net.UDPConn) {
 		s.Opts.Handler.OnUdpRecv(buf[0:n])
 
 		if !s.IsStopped() {
-			logger.Logf(Error, "XUDP - Server stop error: %v; server closed!", err)
+			s.logger.Printf("XUDP - Server stop error: %v; server closed!", err)
 			s.Stop(StopImmediately)
 		}
 	}
@@ -98,7 +100,7 @@ func (s *Server) Stop(mode StopMode) {
 			s.wg.Wait()
 		}
 
-		logger.Log(Info, "XUDP - Server stopped.")
+		s.logger.Print("XUDP - Server stopped.")
 	})
 }
 

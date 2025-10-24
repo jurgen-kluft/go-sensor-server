@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 
@@ -25,15 +26,15 @@ func onShutdown(h *SensorHandler) {
 	h.storage.Shutdown()
 }
 
-func (h *SensorHandler) OnAccept(c *xtcp.Conn) {
+func (h *SensorHandler) OnTcpAccept(c *xtcp.Conn) {
 	fmt.Println("OnAccept:", c.String())
 }
 
-func (h *SensorHandler) OnConnect(c *xtcp.Conn) {
+func (h *SensorHandler) OnTcpConnect(c *xtcp.Conn) {
 	fmt.Println("OnConnect:", c.String())
 }
 
-func (h *SensorHandler) OnRecv(c *xtcp.Conn, p xtcp.Packet) {
+func (h *SensorHandler) OnTcpRecv(c *xtcp.Conn, p xtcp.Packet) {
 	fmt.Println("OnRecv:", c.String(), "len:", len(p.Body))
 
 	// The first packet for this connection should be a sensor packet that contains the MacAddress of the device.
@@ -56,7 +57,7 @@ func (h *SensorHandler) OnRecv(c *xtcp.Conn, p xtcp.Packet) {
 func (h *SensorHandler) OnUdpRecv(p []byte) {
 }
 
-func (h *SensorHandler) OnClose(c *xtcp.Conn) {
+func (h *SensorHandler) OnTcpClose(c *xtcp.Conn) {
 	fmt.Println("OnClose:", c.String())
 }
 
@@ -77,7 +78,10 @@ func run(ctx context.Context) error {
 	handler := newSensorHandler(config)
 	options := xtcp.NewOpts(handler).SetRecvBufSize(1024)
 
-	tcpServer = xtcp.NewServer(options)
+	var (
+		logger = log.New(os.Stdout, "logger: ", log.Lshortfile)
+	)
+	tcpServer = xtcp.NewServer(options, logger)
 	go tcpServer.ListenAndServe(fmt.Sprintf(":%d", config.TcpPort))
 
 	udpServer = xudp.NewServer(xudp.NewOpts(handler))

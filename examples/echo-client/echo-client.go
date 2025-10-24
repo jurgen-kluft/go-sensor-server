@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
+	"os"
 	"time"
 
 	sensor_server "github.com/jurgen-kluft/go-sensor-server"
@@ -17,19 +19,19 @@ var (
 
 type EchoHandler struct{}
 
-func (h *EchoHandler) OnAccept(c *xtcp.Conn) {
+func (h *EchoHandler) OnTcpAccept(c *xtcp.Conn) {
 	fmt.Println("OnAccept:", c.String())
 }
 
-func (h *EchoHandler) OnConnect(c *xtcp.Conn) {
+func (h *EchoHandler) OnTcpConnect(c *xtcp.Conn) {
 	fmt.Println("OnConnect:", c.String())
 }
 
-func (h *EchoHandler) OnRecv(c *xtcp.Conn, p xtcp.Packet) {
+func (h *EchoHandler) OnTcpRecv(c *xtcp.Conn, p xtcp.Packet) {
 	fmt.Println("OnRecv:", c.String(), "len:", len(p.Body))
 }
 
-func (h *EchoHandler) OnClose(c *xtcp.Conn) {
+func (h *EchoHandler) OnTcpClose(c *xtcp.Conn) {
 	fmt.Println("OnClose:", c.String())
 }
 
@@ -40,8 +42,9 @@ func main() {
 
 	handler := &EchoHandler{}
 	opts := xtcp.NewOpts(handler)
+	logger := log.New(os.Stdout, "logger: ", log.Lshortfile)
 
-	client := xtcp.NewConn(opts)
+	client := xtcp.NewConn(opts, logger)
 	clientClosed := make(chan struct{})
 	go func() {
 		err := client.DialAndServe(serverAddr)

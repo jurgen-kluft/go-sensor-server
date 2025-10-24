@@ -1,6 +1,7 @@
 package xtcp
 
 import (
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -9,6 +10,7 @@ import (
 // Server used for running a tcp server.
 type Server struct {
 	Opts    *Options
+	logger  *log.Logger
 	stopped chan struct{}
 	wg      sync.WaitGroup
 	mu      sync.Mutex
@@ -40,7 +42,7 @@ func (s *Server) Serve(l net.Listener) {
 	s.lis = l
 	s.mu.Unlock()
 
-	logger.Log(Info, "XTCP - Server listen on: ", l.Addr().String())
+	s.logger.Printf("XTCP - Server listen on: ", l.Addr().String())
 
 	var tempDelay time.Duration // how long to sleep on accept failure
 	maxDelay := 1 * time.Second
@@ -57,7 +59,7 @@ func (s *Server) Serve(l net.Listener) {
 				if tempDelay > maxDelay {
 					tempDelay = maxDelay
 				}
-				logger.Logf(Error, "XTCP - Server Accept error: %v; retrying in %v", err, tempDelay)
+				s.logger.Printf("XTCP - Server Accept error: %v; retrying in %v", err, tempDelay)
 				select {
 				case <-time.After(tempDelay):
 					continue
@@ -67,7 +69,7 @@ func (s *Server) Serve(l net.Listener) {
 			}
 
 			if !s.IsStopped() {
-				logger.Logf(Error, "XTCP - Server Accept error: %v; server closed!", err)
+				s.logger.Printf("XTCP - Server Accept error: %v; server closed!", err)
 				s.Stop(StopImmediately)
 			}
 
@@ -121,7 +123,7 @@ func (s *Server) Stop(mode StopMode) {
 			s.wg.Wait()
 		}
 
-		logger.Log(Info, "XTCP - Server stopped.")
+		s.logger.Print("XTCP - Server stopped.")
 	})
 }
 
@@ -134,7 +136,7 @@ func (s *Server) handleRawConn(conn net.Conn) {
 	}
 	s.mu.Unlock()
 
-	tcpConn := NewConn(s.Opts)
+	tcpConn := NewConn(s.Opts, s.logger)
 	tcpConn.RawConn = conn
 
 	if !s.addConn(tcpConn) {
@@ -148,7 +150,7 @@ func (s *Server) handleRawConn(conn net.Conn) {
 		s.wg.Done()
 	}()
 
-	s.Opts.Handler.OnAccept(tcpConn)
+	s.Opts.Handler.OnTcpAccept(tcpConn)
 
 	tcpConn.serve()
 }
@@ -181,13 +183,11 @@ func (s *Server) CurClientCount() int {
 
 // NewServer create a tcp server but not start to accept.
 // The opts will set to all accept conns.
-func NewServer(opts *Options) *Server {
-	if opts.RecvBufSize <= 0 {
-		logger.Logf(Warn, "Invalid Opts.RecvBufSize : %v, use DefaultRecvBufSize instead", opts.RecvBufSize)
+func NewServer(opts *Options, logger *log.Logger) *Server {
+	if opts.RecvBufSize == 0 {
 		opts.RecvBufSize = DefaultRecvBufSize
 	}
-	if opts.SendBufListLen <= 0 {
-		logger.Logf(Warn, "Invalid Opts.SendBufListLen : %v, use DefaultSendBufListLen instead", opts.SendBufListLen)
+	if opts.SendBufListLen == 0 {
 		opts.SendBufListLen = DefaultSendBufListLen
 	}
 	s := &Server{
