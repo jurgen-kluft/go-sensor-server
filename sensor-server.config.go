@@ -10,6 +10,7 @@ import (
 type SensorServerConfig struct {
 	StoragePath          string                //
 	TcpPort              int                   //
+	UdpPort              int                   //
 	FlushPeriodInSeconds int                   // how many seconds before we flush all sensor data again
 	Sensors              []*SensorConfig       //
 	SensorMap            map[int]*SensorConfig //
@@ -19,6 +20,7 @@ func newSensorServerConfig() *SensorServerConfig {
 	return &SensorServerConfig{
 		StoragePath:          "",
 		TcpPort:              0,
+		UdpPort:              0,
 		FlushPeriodInSeconds: 15 * 60, // Every 15 minutes, flush to disk
 		Sensors:              nil,
 		SensorMap:            make(map[int]*SensorConfig),
@@ -61,6 +63,7 @@ func decodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig 
 	fields := map[string]corepkg.JsonDecode{
 		"storage":  func(decoder *corepkg.JsonDecoder) { object.StoragePath = decoder.DecodeString() },
 		"tcp_port": func(decoder *corepkg.JsonDecoder) { object.TcpPort = int(decoder.DecodeInt32()) },
+		"udp_port": func(decoder *corepkg.JsonDecoder) { object.UdpPort = int(decoder.DecodeInt32()) },
 		"flush":    func(decoder *corepkg.JsonDecoder) { object.FlushPeriodInSeconds = int(decoder.DecodeInt32()) },
 		"sensors": func(decoder *corepkg.JsonDecoder) {
 			object.Sensors = make([]*SensorConfig, 0, 4)

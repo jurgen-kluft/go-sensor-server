@@ -2,10 +2,10 @@ package sensor_server
 
 type SensorType uint8
 
-// Note: The values must match the SensorType enum in the firmware.
+// Note:
 //
-//	So it is not a good idea to change the value of a SensorType.
-//	Add new types at the end of the list.
+//	The values are used to write the sensor data to disk in binary format, so
+//	changing the values will break compatibility with existing data files.
 const (
 	Unknown     SensorType = 0    // Unknown sensor type
 	Temperature SensorType = 0x01 // (s8, °C)
@@ -30,7 +30,8 @@ const (
 	Distance3   SensorType = 0x15 // (u16, cm)
 	Battery     SensorType = 0x16 // (u8, battery level 0-100%)
 	State       SensorType = 0x17 // (s32 (u8[4]), sensor model, sensor state)
-	SensorCount            = 0x18 // The maximum number of sensor types (highest index + 1)
+	RSSI        SensorType = 0x18 // (s16, dBm)
+	SensorCount            = 0x19 // The maximum number of sensor types (highest index + 1)
 )
 
 type SensorState uint8

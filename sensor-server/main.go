@@ -8,6 +8,7 @@ import (
 
 	sensor_server "github.com/jurgen-kluft/go-sensor-server"
 	"github.com/jurgen-kluft/go-sensor-server/xtcp"
+	"github.com/jurgen-kluft/go-sensor-server/xudp"
 )
 
 type SensorHandler struct {
@@ -46,11 +47,13 @@ func (h *SensorHandler) OnRecv(c *xtcp.Conn, p xtcp.Packet) {
 	if c.UserData >= 0 {
 		for _, v := range sensorPacket.Values {
 			sensorIndex := h.storage.RegisterSensor(v.Sensor)
-			if sensorIndex >= 0 {
-				h.storage.WriteSensorValue(sensorIndex, sensorPacket.Time, v)
-			}
+			h.storage.WriteSensorValue(sensorIndex, sensorPacket.Time, v)
 		}
 	}
+}
+
+// OnRecv Udp
+func (h *SensorHandler) OnUdpRecv(p []byte) {
 }
 
 func (h *SensorHandler) OnClose(c *xtcp.Conn) {
@@ -62,8 +65,9 @@ const (
 	exitCodeInterrupt = 2
 )
 
-func run(ctx context.Context, args []string) error {
-	var server *xtcp.Server
+func run(ctx context.Context) error {
+	var tcpServer *xtcp.Server
+	var udpServer *xudp.Server
 
 	config, err := sensor_server.LoadSensorServerConfig("sensor-server.config.json")
 	if err != nil {
@@ -73,11 +77,15 @@ func run(ctx context.Context, args []string) error {
 	handler := newSensorHandler(config)
 	options := xtcp.NewOpts(handler).SetRecvBufSize(1024)
 
-	server = xtcp.NewServer(options)
-	go server.ListenAndServe(fmt.Sprintf(":%d", config.TcpPort))
+	tcpServer = xtcp.NewServer(options)
+	go tcpServer.ListenAndServe(fmt.Sprintf(":%d", config.TcpPort))
+
+	udpServer = xudp.NewServer(xudp.NewOpts(handler))
+	go udpServer.ListenAndServe(fmt.Sprintf(":%d", config.UdpPort))
 
 	for range ctx.Done() {
-		server.Stop(xtcp.StopGracefullyAndWait)
+		tcpServer.Stop(xtcp.StopGracefullyAndWait)
+		udpServer.Stop(xudp.StopGracefullyAndWait)
 		onShutdown(handler)
 		break
 	}
@@ -103,7 +111,7 @@ func main() {
 		<-signalChan // second signal, hard exit
 		os.Exit(exitCodeInterrupt)
 	}()
-	if err := run(ctx, os.Args); err != nil {
+	if err := run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(exitCodeErr)
 	}

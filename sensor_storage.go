@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -177,7 +178,9 @@ type SensorStorage struct {
 func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 	storage := &SensorStorage{
 		config:            config,
-		writeChannel:      make(chan *sensorStreamBlock, 64),
+		sensorList:        config.Sensors,
+		sensorStreams:     make([]*sensorStream, 0, 65536),
+		writeChannel:      make(chan *sensorStreamBlock, 512),
 		blockHeaderBuffer: bytes.Buffer{},
 		blockHeaderWriter: nil,
 		flushTicker:       nil,
@@ -234,7 +237,7 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 		storage.setupSensorStream(sensorStream)
 	}
 
-	// The go-routine that writes data blocks to the file system
+	// The go-routine that writes data blocks to the file system, receives blocks on the writeChannel
 	go processWrite(storage)
 
 	log.LogInfof("Periodic flush interval: %d seconds", config.FlushPeriodInSeconds)
@@ -271,13 +274,9 @@ func (s *SensorStorage) Shutdown() {
 		}
 	}
 
-	// End the flush go-routine
-	s.writeChannel <- nil
-
-	time.Sleep(1 * time.Second) // Give some time for the write go-routine to finish
-
-	// Close the write channel and wait for it to finish
-	close(s.writeChannel)
+	s.writeChannel <- nil       // End the flush go-routine
+	time.Sleep(5 * time.Second) // Give some time for the write go-routine to finish
+	close(s.writeChannel)       // Close the write channel
 }
 
 func processWrite(s *SensorStorage) {
@@ -389,11 +388,15 @@ func (s *SensorStorage) RegisterSensor(sensor *SensorConfig) int32 {
 }
 
 func (s *SensorStorage) WriteSensorValue(sensorIndex int32, packetTime time.Time, sensorValue SensorValue) error {
+	if sensorIndex < 0 || int(sensorIndex) > 65535 {
+		return log.LogErr(fmt.Errorf("invalid sensor index"), "sensor index: ", strconv.Itoa(int(sensorIndex)))
+	}
+
 	// Create or get the data block for the given location and sensor type
 	sensorConfig := s.config.Sensors[sensorIndex]
 	sensorStream := s.sensorStreams[sensorIndex]
 	if sensorStream == nil {
-		return log.LogErr(fmt.Errorf("sensor sensorStream is nil, not registered"), "sensor: ", sensorConfig.Name(), "index: ", string(sensorConfig.Index()))
+		return log.LogErr(fmt.Errorf("sensor sensorStream is nil, not registered"), "sensor: ", sensorConfig.Name(), "index: ", strconv.Itoa(sensorConfig.Index()))
 	}
 
 	// Current time
@@ -407,7 +410,7 @@ func (s *SensorStorage) WriteSensorValue(sensorIndex int32, packetTime time.Time
 	if packetTime.Before(sensorStream.today.Time) {
 		// If packet is really old (which should not happen) then we drop it
 		if packetTime.Before(sensorStream.yesterday.Time) {
-			return log.LogErr(fmt.Errorf("sensor stream packet time is before yesterday block, dropping packet"), "sensor name: ", sensorConfig.Name(), "sensor index: ", string(sensorConfig.Index()))
+			return log.LogErr(fmt.Errorf("sensor stream packet time is before yesterday block, dropping packet"), "sensor name: ", sensorConfig.Name(), "sensor index: ", strconv.Itoa(sensorConfig.Index()))
 		}
 		// Write to the yesterday block if it exists and the time fits
 		if packetTime.After(sensorStream.yesterday.Time) {
@@ -443,13 +446,46 @@ func writeStreamBlock(s *SensorStorage, stream *sensorStreamBlock) error {
 		return nil // Nothing to write
 	}
 
-	// Open the file for writing, fully overwrite if it exists
 	storeFullFilepath := s.getStreamBlockFilepath(stream.Stream, stream.Time)
+
+	// Delete 'storeFullFilepath'.current if it exists
+	{
+		currentFilepath := storeFullFilepath + ".current"
+		if _, err := os.Stat(currentFilepath); err == nil {
+			os.Remove(currentFilepath) // Remove current file if it exists
+		}
+	}
+
+	// If 'storeFullFilepath' exists, rename it to 'storeFullFilepath'.current
+	{
+		if _, err := os.Stat(storeFullFilepath); err == nil {
+			currentFilepath := storeFullFilepath + ".current"
+			os.Remove(currentFilepath) // Remove old backup if it exists
+			err := os.Rename(storeFullFilepath, currentFilepath)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// Write the data block to 'storeFullFilepath'
 	file, err := os.OpenFile(storeFullFilepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+
+	// If 'storeFullFilepath'.backup exists, remove it and rename 'storeFullFilepath'.current to 'storeFullFilepath'.backup after successful write
+	{
+		backupFilepath := storeFullFilepath + ".backup"
+		os.Remove(backupFilepath) // Remove backup
+
+		currentFilepath := storeFullFilepath + ".current"
+		err := os.Rename(currentFilepath, backupFilepath)
+		if err != nil {
+			return err
+		}
+	}
 
 	log.LogInfof("Writing data block to file: %s", storeFullFilepath)
 

@@ -6,7 +6,7 @@ Some notes:
 
 - Every sensor is a data stream, and falls under a sensor group which is a device.
 - Data is very minimal and it should be quite easy to load/use it in a visualization tool
-- Snappy is used upon writing, and reading data to/from disk (only for files > 32 KB and header is not compressed)
+- Snappy is used upon writing, and reading data to/from disk
 
 ## Status
 
@@ -19,13 +19,12 @@ Example for a Temperature sensor:
 
 Storing the temperature every minute for a year with 1 signed byte would require:
 ```
-    1 byte * 1 (times per minute) * 60 (minutes per hour) * 24 (hours per day) * 365 (days per year) = 525,600 bytes = ~513 KB.
+    1 byte * 1 (time per minute) * 60 (minutes per hour) * 24 (hours per day) * 365 (days per year) = 525,600 bytes = ~513 KB.
     Note: Applying (snappy) compression would reduce this to about ~100 KB.
 ```
-That is for ONE YEAR, for ONE SENSOR, so as you can see this is quite efficient.
+Note: That is ~100KB for one year, for one sensor.
 
-
-Example for a Motion detection:
+Example for a Motion sensor:
 
 Storing the motion state twice a second for a year with 1 bit would require:
 ```
@@ -33,3 +32,4 @@ Storing the motion state twice a second for a year with 1 bit would require:
     Note: Since there will be mostly large runs of 0 bits, applying (snappy) compression would reduce this to about ~300 KB.
 ```
 
+Note: That is ~300KB for one year, for one motion sensor

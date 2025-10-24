@@ -1,6 +1,7 @@
 {
 	"storage": "$HOME/sensor-server/villa",
 	"tcp_port": 31339,
+	"udp_port": 31342,
 	"flush": 60,
 	"sensors": [
 		{"index": 0, "name": "basement_stairwell_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
@@ -97,7 +98,6 @@
 		{"index": 152,"name": "floor3_southbalcony_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
 
 		{"index": 160, "name": "northgarden_parkingplace_presence", "type": "presence1", "field_type": "u2", "frequency": 60},
-		{"index": 161, "name": "northgarden_lawn_presence", "type": "presence1", "field_type": "u2", "frequency": 3600},
 
 		{"index": 192, "name": "southgarden_presence", "type": "presence1", "field_type": "u2", "frequency": 3600}
 	]
