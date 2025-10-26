@@ -1,7 +1,7 @@
 {
 	"storage": "$HOME/sensor-server/villa",
-	"tcp_port": 31339,
-	"udp_port": 31342,
+	"tcp_port": 31372,
+	"udp_port": 31370,
 	"flush": 60,
 	"sensors": [
 		{"index": 0, "name": "basement_stairwell_presence", "mac": "", "type": "presence1"},
