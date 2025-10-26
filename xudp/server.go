@@ -2,15 +2,16 @@ package xudp
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"sync"
+
+	"github.com/jurgen-kluft/go-sensor-server/logging"
 )
 
 // Server used for running a tcp server.
 type Server struct {
 	Opts    *Options
-	logger  *log.Logger
+	logger  logging.Logger
 	stopped chan struct{}
 	wg      sync.WaitGroup
 	mu      sync.Mutex
@@ -44,7 +45,7 @@ func (s *Server) Serve(conn *net.UDPConn) {
 	s.conn = conn
 	s.mu.Unlock()
 
-	s.logger.Print("XUDP - Server listen on: ", conn.LocalAddr().String())
+	s.logger.LogInfo("XUDP - Server listen on: ", conn.LocalAddr().String())
 
 	for {
 		var buf [1472]byte
@@ -57,7 +58,7 @@ func (s *Server) Serve(conn *net.UDPConn) {
 		s.Opts.Handler.OnUdpRecv(buf[0:n])
 
 		if !s.IsStopped() {
-			s.logger.Printf("XUDP - Server stop error: %v; server closed!", err)
+			s.logger.LogErrorf(err, "XUDP - Server stop error: %v; server closed!")
 			s.Stop(StopImmediately)
 		}
 	}
@@ -100,15 +101,16 @@ func (s *Server) Stop(mode StopMode) {
 			s.wg.Wait()
 		}
 
-		s.logger.Print("XUDP - Server stopped.")
+		s.logger.LogInfo("XUDP - Server stopped.")
 	})
 }
 
 // NewServer create a tcp server but not start to accept.
 // The opts will set to all accept conns.
-func NewServer(opts *Options) *Server {
+func NewServer(opts *Options, logger logging.Logger) *Server {
 	s := &Server{
 		Opts:    opts,
+		logger:  logger,
 		stopped: make(chan struct{}),
 	}
 	return s

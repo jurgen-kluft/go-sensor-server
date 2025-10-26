@@ -3,11 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
-	"os"
 	"time"
 
 	sensor_server "github.com/jurgen-kluft/go-sensor-server"
+	"github.com/jurgen-kluft/go-sensor-server/logging"
 	"github.com/jurgen-kluft/go-sensor-server/xtcp"
 )
 
@@ -27,8 +26,8 @@ func (h *EchoHandler) OnTcpConnect(c *xtcp.Conn) {
 	fmt.Println("OnConnect:", c.String())
 }
 
-func (h *EchoHandler) OnTcpRecv(c *xtcp.Conn, p xtcp.Packet) {
-	fmt.Println("OnRecv:", c.String(), "len:", len(p.Body))
+func (h *EchoHandler) OnTcpRecv(c *xtcp.Conn, p []byte) {
+	fmt.Println("OnRecv:", c.String(), "len:", len(p))
 }
 
 func (h *EchoHandler) OnTcpClose(c *xtcp.Conn) {
@@ -42,7 +41,7 @@ func main() {
 
 	handler := &EchoHandler{}
 	opts := xtcp.NewOpts(handler)
-	logger := log.New(os.Stdout, "logger: ", log.Lshortfile)
+	logger := logging.NewDefault()
 
 	client := xtcp.NewConn(opts, logger)
 	clientClosed := make(chan struct{})
@@ -81,13 +80,13 @@ func createSensorValuePacket(time uint32) []byte {
 	packet = writePacketHeader(packet, 1)
 
 	// "temperature": 24
-	// {"index": 22,"name": "floor1_livingarea_temperature", "type": "temperature", "field_type": "s8", "frequency": 12},
-	temperatureSensor := sensor_server.NewSensorConfig(22, "floor1_livingarea_temperature", sensor_server.Temperature, sensor_server.TypeS8, 12)
+	// {"index": 22,"name": "floor1_livingarea_temperature", "type": "temperature"},
+	temperatureSensor := sensor_server.NewSensorConfig(22, "floor1_livingarea_temperature", 0xAABBCCDDEEFF, sensor_server.Temperature)
 	packet = writeSensorValue(packet, temperatureSensor, 24)
 
 	// "humidity": 50
-	// {"index": 23,"name": "floor1_livingarea_humidity", "type": "humidity", "field_type": "s8", "frequency": 12},
-	humiditySensor := sensor_server.NewSensorConfig(23, "floor1_livingarea_humidity", sensor_server.Humidity, sensor_server.TypeS8, 12)
+	// {"index": 23,"name": "floor1_livingarea_humidity", "type": "humidity"},
+	humiditySensor := sensor_server.NewSensorConfig(23, "floor1_livingarea_humidity", 0xAABBCCDDEEFF, sensor_server.Humidity)
 	packet = writeSensorValue(packet, humiditySensor, 50)
 
 	packet = finalizePacket(packet)

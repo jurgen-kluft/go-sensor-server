@@ -8,12 +8,11 @@ import (
 	"os"
 	"path"
 	"sort"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/jurgen-kluft/go-log"
+	"github.com/jurgen-kluft/go-sensor-server/logging"
 )
 
 // Storage for sensor data
@@ -64,8 +63,7 @@ func newSensorStreamBlock(stream *sensorStream, content []byte) *sensorStreamBlo
 	// TODO This datablock might already exist on disk, load it instead of creating a new one.
 	//      This can happen when the server crashes and/or restarts during the day.
 	sensor := stream.sensor
-	sampleFreq := sensor.SampleFrequency()
-	blockSizeInBytes := (int(sampleFreq*24)*int(sensor.SizeInBits()) + 7) / 8
+	blockSizeInBytes := sensor.NumberOfSamplesPerHour() * int32(sensor.SizeInBits())
 	blockSizeInBytes = blockSizeInBytes + SensorDataBlockHeaderSize
 	block := &sensorStreamBlock{
 		Stream:     stream,
@@ -75,7 +73,7 @@ func newSensorStreamBlock(stream *sensorStream, content []byte) *sensorStreamBlo
 		isModified: atomic.Int32{},
 	}
 
-	if content != nil && len(content) == blockSizeInBytes {
+	if content != nil && len(content) == int(blockSizeInBytes) {
 		block.Content = content
 	}
 
@@ -87,10 +85,9 @@ func (s *sensorStreamBlock) createContentBuffer() {
 		return // Already created
 	}
 
-	sampleFreq := s.Stream.sensor.SampleFrequency()
 	sensor := s.Stream.sensor
 
-	blockSizeInBytes := int(sampleFreq*24) * int(sensor.SizeInBits())
+	blockSizeInBytes := sensor.NumberOfSamplesPerHour() * int32(sensor.SizeInBits())
 	blockSizeInBytes = (blockSizeInBytes + 7) / 8 // Round up to full bytes
 	blockSizeInBytes = blockSizeInBytes + SensorDataBlockHeaderSize
 	s.Content = make([]byte, blockSizeInBytes)
@@ -105,65 +102,69 @@ func (s *sensorStreamBlock) createContentBuffer() {
 	// Note: The rest of the header is reserved (zeroed)                                            // reserved (36 bytes)
 }
 
-func (s *sensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, sensorValue SensorValue) {
+func (s *sensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, sensorValue SensorValue) error {
 	s.LastSample = sensorValue
 	if sensorValue.IsZero() {
-		return // Default value
+		return nil // Default value
 	}
 
-	sampleFreq := s.Stream.sensor.SampleFrequency()
+	sampleTime := time.Now()
+
 	sensor := s.Stream.sensor
 
-	sampleTime := time.Now()
-	sampleIndex := sampleTime.Sub(s.Time).Milliseconds() / (60 * 60 * 1000 / int64(sampleFreq))
-	if sampleIndex < 0 || sampleIndex >= int64(sampleFreq*24) {
+	var sampleIndex int32
+	if idx, ok := sensor.ToSampleIndex(sessionReferenceTime, sampleTime); ok {
+		sampleIndex = idx
+	} else {
 		// Sample is out of range for this block, ignore it
-		log.LogError(fmt.Errorf("Sample index out of range for this block"), "ignoring sample")
-		return
+		return fmt.Errorf("sample index out of range for this block")
 	}
 
 	// Write the sensor value to the buffer based on its type
 	switch sensor.FieldType() {
-	case TypeU1:
+	case FieldTypeU1:
 		byteIndex := SensorDataBlockHeaderSize + (sampleIndex / 8)
 		bitIndex := sampleIndex % 8
 		s.Content[byteIndex] |= (1 << bitIndex) // Set the bit
-	case TypeU2:
+	case FieldTypeU2:
 		byteIndex := SensorDataBlockHeaderSize + (sampleIndex / 4)
 		bitIndex := sampleIndex % 4
 		s.Content[byteIndex] |= byte((sensorValue.Value & 3) << bitIndex) // Set the bit
-	case TypeS8:
+	case FieldTypeS8:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex
 		s.Content[byteIndex] = byte(sensorValue.Value)
-	case TypeS16:
+	case FieldTypeS16:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex*2
 		binary.LittleEndian.PutUint16(s.Content[byteIndex:byteIndex+2], uint16(sensorValue.Value))
-	case TypeS32:
+	case FieldTypeS32:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex*4
 		binary.LittleEndian.PutUint32(s.Content[byteIndex:byteIndex+4], uint32(sensorValue.Value))
-	case TypeS64:
+	case FieldTypeS64:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex*8
 		binary.LittleEndian.PutUint64(s.Content[byteIndex:byteIndex+8], uint64(sensorValue.Value))
-	case TypeU8:
+	case FieldTypeU8:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex
 		s.Content[byteIndex] = byte(sensorValue.Value)
-	case TypeU16:
+	case FieldTypeU16:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex*2
 		binary.LittleEndian.PutUint16(s.Content[byteIndex:byteIndex+2], uint16(sensorValue.Value))
-	case TypeU32:
+	case FieldTypeU32:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex*4
 		binary.LittleEndian.PutUint32(s.Content[byteIndex:byteIndex+4], uint32(sensorValue.Value))
-	case TypeU64:
+	case FieldTypeU64:
 		byteIndex := SensorDataBlockHeaderSize + sampleIndex*8
 		binary.LittleEndian.PutUint64(s.Content[byteIndex:byteIndex+8], uint64(sensorValue.Value))
 	}
 
 	// Indicate that this block has been modified
 	s.isModified.Add(1)
+
+	return nil
 }
 
 type SensorStorage struct {
 	config            *SensorServerConfig     // Configuration for the sensor storage
+	logger            logging.Logger          // Logger for logging messages
 	sensorList        []*SensorConfig         // List of sensors
 	sensorStreams     []*sensorStream         // List of sensor streams indexed by sensor index
 	writeChannel      chan *sensorStreamBlock // Channel for writing data blocks
@@ -175,11 +176,12 @@ type SensorStorage struct {
 	flushQueue        []*sensorStreamBlock    // Queue of blocks to flush
 }
 
-func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
+func NewSensorStorage(config *SensorServerConfig, logger logging.Logger) *SensorStorage {
 	storage := &SensorStorage{
 		config:            config,
+		logger:            logger,
 		sensorList:        config.Sensors,
-		sensorStreams:     make([]*sensorStream, 0, 65536),
+		sensorStreams:     make([]*sensorStream, 65536),
 		writeChannel:      make(chan *sensorStreamBlock, 512),
 		blockHeaderBuffer: bytes.Buffer{},
 		blockHeaderWriter: nil,
@@ -196,32 +198,19 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 	if _, err := os.Stat(dirpath); os.IsNotExist(err) {
 		err := os.MkdirAll(dirpath, 0755)
 		if err != nil {
-			log.LogError(err, "failed to create storage directory")
+			storage.logger.LogError(err, "failed to create storage directory")
 			return nil
 		}
 	}
 
 	// Create subdirectories for each device and sensor type
 	for _, sensor := range storage.config.Sensors {
-		groupPath := path.Join(dirpath, sensor.Name())
-		if _, err := os.Stat(groupPath); os.IsNotExist(err) {
-			err := os.MkdirAll(groupPath, 0755)
+		sensorStreamDirPath := path.Join(dirpath, sensor.Name())
+		if _, err := os.Stat(sensorStreamDirPath); os.IsNotExist(err) {
+			err := os.MkdirAll(sensorStreamDirPath, 0755)
 			if err != nil {
-				log.LogError(err, "failed to create device directory")
+				storage.logger.LogError(err, "failed to create sensor stream directory")
 				return nil
-			}
-		}
-		for _, sensor := range storage.config.Sensors {
-			if !sensor.IsValid() {
-				continue
-			}
-			sensorPath := path.Join(groupPath, sensor.Name())
-			if _, err := os.Stat(sensorPath); os.IsNotExist(err) {
-				err := os.MkdirAll(sensorPath, 0755)
-				if err != nil {
-					log.LogError(err, "failed to create sensor directory")
-					return nil
-				}
 			}
 		}
 	}
@@ -240,10 +229,10 @@ func NewSensorStorage(config *SensorServerConfig) *SensorStorage {
 	// The go-routine that writes data blocks to the file system, receives blocks on the writeChannel
 	go processWrite(storage)
 
-	log.LogInfof("Periodic flush interval: %d seconds", config.FlushPeriodInSeconds)
+	storage.logger.LogInfof("Periodic flush interval: %d seconds", config.FlushPeriodInSeconds)
 	schedulePeriodicFlush(storage, time.Duration(config.FlushPeriodInSeconds)*time.Second)
 
-	log.LogInfof("Sensor storage initialized, storage path: %s", dirpath)
+	storage.logger.LogInfof("Sensor storage initialized, storage path: %s", dirpath)
 	return storage
 }
 
@@ -282,11 +271,11 @@ func (s *SensorStorage) Shutdown() {
 func processWrite(s *SensorStorage) {
 	for block := range s.writeChannel {
 		if block == nil {
-			log.LogInfo("go-routine for writing stream data blocks has exited")
+			s.logger.LogInfo("go-routine for writing stream data blocks has exited")
 			return // Exit the go-routine
 		}
 		if err := writeStreamBlock(s, block); err != nil {
-			log.LogError(err, "writing data block")
+			s.logger.LogError(err, "writing data block")
 		}
 	}
 }
@@ -301,7 +290,7 @@ func processFlush(s *SensorStorage) {
 		if count > 0 {
 			sensorStream.isModified.Add(-count)
 			if toWrite == 0 {
-				log.LogInfof("Processing flush queue")
+				s.logger.LogInfof("Processing flush queue")
 			}
 			toWrite += 1
 			s.writeChannel <- sensorStream
@@ -315,7 +304,7 @@ func processFlush(s *SensorStorage) {
 	}
 
 	if toWrite > 0 {
-		log.LogInfof("Processed flush queue, writing %d streams to disk", toWrite)
+		s.logger.LogInfof("Processed flush queue, writing %d streams to disk", toWrite)
 	}
 
 	if toNil > 0 {
@@ -362,7 +351,7 @@ func schedulePeriodicFlush(s *SensorStorage, interval time.Duration) {
 			select {
 			case block := <-s.flushChannel:
 				if block == nil {
-					log.LogInfo("go-routine for flushing stream data blocks has exited")
+					s.logger.LogInfo("go-routine for flushing stream data blocks has exited")
 					return // Exit the go-routine
 				}
 				s.flushLock.Lock()
@@ -377,32 +366,18 @@ func schedulePeriodicFlush(s *SensorStorage, interval time.Duration) {
 	}()
 }
 
-// RegisterSensor registers a sensor and returns its ID.
-// Note: If this sensor type was not configured as part of the sensor device, -1 is returned.
-func (s *SensorStorage) RegisterSensor(sensor *SensorConfig) int32 {
-	sensorIndex := sensor.Index()
-	if s.sensorStreams[sensorIndex] != nil {
-		return int32(sensorIndex)
-	}
-	return -1
-}
-
-func (s *SensorStorage) WriteSensorValue(sensorIndex int32, packetTime time.Time, sensorValue SensorValue) error {
-	if sensorIndex < 0 || int(sensorIndex) > 65535 {
-		return log.LogErr(fmt.Errorf("invalid sensor index"), "sensor index: ", strconv.Itoa(int(sensorIndex)))
-	}
-
+func (s *SensorStorage) WriteSensorValue(sensorConfig *SensorConfig, packetTime time.Time, sensorValue SensorValue) error {
 	// Create or get the data block for the given location and sensor type
-	sensorConfig := s.config.Sensors[sensorIndex]
-	sensorStream := s.sensorStreams[sensorIndex]
-	if sensorStream == nil {
-		return log.LogErr(fmt.Errorf("sensor sensorStream is nil, not registered"), "sensor: ", sensorConfig.Name(), "index: ", strconv.Itoa(sensorConfig.Index()))
+	sensorIndex := sensorConfig.Index()
+	if sensorIndex < 0 || sensorIndex >= len(s.sensorStreams) || s.sensorStreams[sensorIndex] == nil {
+		return fmt.Errorf("invalid sensor %s, index %d", sensorConfig.Name(), sensorIndex)
 	}
+	sensorStream := s.sensorStreams[sensorIndex]
 
 	// Current time
 	now := time.Now()
 
-	log.LogInfof("WriteSensorValue: sensor=%s, value=%d", sensorConfig.Name(), sensorValue.Value)
+	s.logger.LogInfof("WriteSensorValue: sensor=%s, value=%d", sensorConfig.Name(), sensorValue.Value)
 
 	// Update the sensor stream (check if day has changed, etc..)
 	s.activeSensorStream(sensorStream, now)
@@ -410,7 +385,7 @@ func (s *SensorStorage) WriteSensorValue(sensorIndex int32, packetTime time.Time
 	if packetTime.Before(sensorStream.today.Time) {
 		// If packet is really old (which should not happen) then we drop it
 		if packetTime.Before(sensorStream.yesterday.Time) {
-			return log.LogErr(fmt.Errorf("sensor stream packet time is before yesterday block, dropping packet"), "sensor name: ", sensorConfig.Name(), "sensor index: ", strconv.Itoa(sensorConfig.Index()))
+			return fmt.Errorf("sensor stream packet time is before yesterday block, dropping packet for sensor %s with index %d", sensorConfig.Name(), sensorConfig.Index())
 		}
 		// Write to the yesterday block if it exists and the time fits
 		if packetTime.After(sensorStream.yesterday.Time) {
@@ -428,14 +403,14 @@ func (s *SensorStorage) WriteSensorValue(sensorIndex int32, packetTime time.Time
 		}
 		sensorStream.today.WriteSensorValue(sensorStream.reference, sensorValue)
 	}
+
 	return nil
 }
 
 // The go-routine for writing data blocks to the file system
 func (s *SensorStorage) getStreamBlockFilepath(stream *sensorStream, time time.Time) string {
 	storePathFilename := fmt.Sprintf("%04d_%02d_%02d.data", time.Year(), time.Month(), time.Day())
-	streamSensorName := stream.sensor.Name()
-	storeFullFilepath := path.Join(s.config.StoragePath, stream.sensor.Name(), streamSensorName, storePathFilename)
+	storeFullFilepath := path.Join(s.config.StoragePath, stream.sensor.Name(), storePathFilename)
 	storeFullFilepath = os.ExpandEnv(storeFullFilepath)
 	return storeFullFilepath
 }
@@ -447,25 +422,14 @@ func writeStreamBlock(s *SensorStorage, stream *sensorStreamBlock) error {
 	}
 
 	storeFullFilepath := s.getStreamBlockFilepath(stream.Stream, stream.Time)
-
-	// Delete 'storeFullFilepath'.current if it exists
-	{
-		currentFilepath := storeFullFilepath + ".current"
-		if _, err := os.Stat(currentFilepath); err == nil {
-			os.Remove(currentFilepath) // Remove current file if it exists
-		}
-	}
+	storeFullFilepathCurrent := storeFullFilepath + ".current"
 
 	// If 'storeFullFilepath' exists, rename it to 'storeFullFilepath'.current
-	{
-		if _, err := os.Stat(storeFullFilepath); err == nil {
-			currentFilepath := storeFullFilepath + ".current"
-			os.Remove(currentFilepath) // Remove old backup if it exists
-			err := os.Rename(storeFullFilepath, currentFilepath)
-			if err != nil {
-				return err
-			}
+	if stat, err := os.Stat(storeFullFilepath); err == nil && !stat.IsDir() {
+		if stat, err := os.Stat(storeFullFilepathCurrent); err == nil && !stat.IsDir() {
+			os.Remove(storeFullFilepathCurrent) // Remove current file if it exists
 		}
+		os.Rename(storeFullFilepath, storeFullFilepathCurrent)
 	}
 
 	// Write the data block to 'storeFullFilepath'
@@ -477,17 +441,16 @@ func writeStreamBlock(s *SensorStorage, stream *sensorStreamBlock) error {
 
 	// If 'storeFullFilepath'.backup exists, remove it and rename 'storeFullFilepath'.current to 'storeFullFilepath'.backup after successful write
 	{
-		backupFilepath := storeFullFilepath + ".backup"
-		os.Remove(backupFilepath) // Remove backup
-
-		currentFilepath := storeFullFilepath + ".current"
-		err := os.Rename(currentFilepath, backupFilepath)
-		if err != nil {
-			return err
+		if stat, err := os.Stat(storeFullFilepathCurrent); err == nil && !stat.IsDir() {
+			storeFullFilepathBackup := storeFullFilepath + ".backup"
+			if stat, err := os.Stat(storeFullFilepathBackup); err == nil && !stat.IsDir() {
+				os.Remove(storeFullFilepathBackup) // Remove backup
+			}
+			os.Rename(storeFullFilepathCurrent, storeFullFilepathBackup)
 		}
 	}
 
-	log.LogInfof("Writing data block to file: %s", storeFullFilepath)
+	s.logger.LogInfof("Writing data block to file: %s", storeFullFilepath)
 
 	// Write the header and data to the file
 	_, err = file.Write(stream.Content)

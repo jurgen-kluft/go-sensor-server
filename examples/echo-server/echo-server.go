@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	sensor_server "github.com/jurgen-kluft/go-sensor-server"
+	"github.com/jurgen-kluft/go-sensor-server/logging"
 	"github.com/jurgen-kluft/go-sensor-server/xtcp"
 )
 
@@ -21,8 +21,8 @@ func (h *EchoHandler) OnTcpConnect(c *xtcp.Conn) {
 	fmt.Println("OnConnect:", c.String())
 }
 
-func (h *EchoHandler) OnTcpRecv(c *xtcp.Conn, p xtcp.Packet) {
-	fmt.Println("OnRecv:", c.String(), "len:", len(p.Body))
+func (h *EchoHandler) OnTcpRecv(c *xtcp.Conn, p []byte) {
+	fmt.Println("OnRecv:", c.String(), "len:", len(p))
 }
 
 func (h *EchoHandler) OnTcpClose(c *xtcp.Conn) {
@@ -35,7 +35,8 @@ func main() {
 
 	handler := &EchoHandler{}
 	options := xtcp.NewOpts(handler).SetRecvBufSize(1024).SetAsyncWrite(true).SetSendBufListLen(1024)
-	logger := log.New(os.Stdout, "logger: ", log.Lshortfile)
+
+	logger := logging.NewDefault()
 
 	srv := xtcp.NewServer(options, logger)
 	go srv.ListenAndServe(":31339")

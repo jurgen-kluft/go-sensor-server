@@ -5,7 +5,7 @@ import (
 )
 
 var (
-	DefaultRecvBufSize    = uint(4) << 10 // DefaultRecvBufSize is 4KB, the default size of recv buf.
+	DefaultRecvBufSize    = uint(8) << 10 // DefaultRecvBufSize is 8KB, the default size of recv buf.
 	DefaultSendBufListLen = uint(1) << 10 // DefaultSendBufListLen is 1KB, the default length of send buf list.
 	DefaultAsyncWrite     = true          // DefaultAsyncWrite is enable async write or not.
 )
@@ -24,7 +24,7 @@ const (
 type Handler interface {
 	OnTcpAccept(*Conn)       // OnAccept mean server accept a new connect.
 	OnTcpConnect(*Conn)      // OnConnect mean client connected to a server.
-	OnTcpRecv(*Conn, Packet) // OnRecv mean conn recv a packet.
+	OnTcpRecv(*Conn, []byte) // OnRecv mean conn recv a packet.
 	OnTcpClose(*Conn)        // OnClose mean conn is closed.
 }
 

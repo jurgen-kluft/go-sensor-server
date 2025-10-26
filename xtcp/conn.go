@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/jurgen-kluft/go-sensor-server/logging"
 )
 
 const (
@@ -83,7 +84,7 @@ type Conn struct {
 	Opts        *Options
 	RawConn     net.Conn
 	UserData    int32
-	logger      *log.Logger
+	logger      logging.Logger
 	sendBufList chan []byte
 	closed      chan struct{}
 	state       int32
@@ -96,13 +97,13 @@ type Conn struct {
 }
 
 // NewConn return new conn.
-func NewConn(opts *Options, logger *log.Logger) *Conn {
+func NewConn(opts *Options, logger logging.Logger) *Conn {
 	if opts.RecvBufSize <= 0 {
-		logger.Printf("Invalid Opts.RecvBufSize : %v, use DefaultRecvBufSize instead", opts.RecvBufSize)
+		logger.LogInfof("Invalid Opts.RecvBufSize : %v, use DefaultRecvBufSize instead", opts.RecvBufSize)
 		opts.RecvBufSize = DefaultRecvBufSize
 	}
 	if opts.SendBufListLen <= 0 {
-		logger.Printf("Invalid Opts.SendBufListLen : %v, use DefaultRecvBufSize instead", opts.SendBufListLen)
+		logger.LogInfof("Invalid Opts.SendBufListLen : %v, use DefaultRecvBufSize instead", opts.SendBufListLen)
 		opts.SendBufListLen = DefaultSendBufListLen
 	}
 	c := &Conn{
@@ -187,7 +188,7 @@ func (c *Conn) recvLoop() {
 	maxDelay := 1 * time.Second
 
 	defer func() {
-		c.logger.Print("XTCP - Conn recv-loop exit: ", c.RawConn.RemoteAddr())
+		c.logger.LogInfo("XTCP - Conn recv-loop exit: ", c.RawConn.RemoteAddr())
 		c.wg.Done()
 	}()
 
@@ -210,7 +211,7 @@ func (c *Conn) recvLoop() {
 					if tempDelay > maxDelay {
 						tempDelay = maxDelay
 					}
-					c.logger.Printf("XTCP - Conn[%v] recv error : %v; retrying in %v", c.RawConn.RemoteAddr(), err, tempDelay)
+					c.logger.LogErrorf(err, "XTCP - Conn[%v] recv, retrying in %v", c.RawConn.RemoteAddr(), tempDelay)
 					time.Sleep(tempDelay)
 					continue
 				}
@@ -218,7 +219,7 @@ func (c *Conn) recvLoop() {
 
 			if !c.IsStoped() {
 				if err != io.EOF {
-					c.logger.Printf("XTCP - Conn[%v] recv error : %v", c.RawConn.RemoteAddr(), err)
+					c.logger.LogErrorf(err, "XTCP - Conn[%v] recv", c.RawConn.RemoteAddr())
 				}
 				c.Stop(StopImmediately)
 			}
@@ -229,20 +230,15 @@ func (c *Conn) recvLoop() {
 		recvBuf.Write(tempBuf[:n])
 		atomic.AddUint64(&c.recvBytes, uint64(n))
 		tempDelay = 0
-		for recvBuf.Len() > 6 { // at least 6 bytes
-			// TODO see if the recvBuffer contains a packet
+		for recvBuf.Len() >= 6 { // at least 6 bytes
 			buffer := recvBuf.Bytes()
 			length := int(buffer[0]) * 2
 			if int(length) <= len(buffer) {
-				pl := length
-				body := make([]byte, pl)
-				copy(body, buffer[:pl])
-				p := Packet{
-					Body: body,
-				}
-
-				_ = recvBuf.Next(pl)
-				c.Opts.Handler.OnTcpRecv(c, p)
+				_ = recvBuf.Next(length)
+				c.Opts.Handler.OnTcpRecv(c, buffer[:length])
+			} else {
+				// not enough data for a full packet
+				break
 			}
 		}
 	}
@@ -275,14 +271,14 @@ func (c *Conn) sendBuf(buf []byte) (int, error) {
 					if tempDelay > maxDelay {
 						tempDelay = maxDelay
 					}
-					c.logger.Printf("XTCP - Conn[%v] Send error: %v; retrying in %v", c.RawConn.RemoteAddr(), err, tempDelay)
+					c.logger.LogErrorf(err, "XTCP - Conn[%v] Send, retrying in %v", c.RawConn.RemoteAddr(), tempDelay)
 					time.Sleep(tempDelay)
 					continue
 				}
 			}
 
 			if !c.IsStoped() {
-				c.logger.Printf("XTCP - Conn[%v] Send error : %v", c.RawConn.RemoteAddr(), err)
+				c.logger.LogErrorf(err, "XTCP - Conn[%v] Send", c.RawConn.RemoteAddr())
 				c.Stop(StopImmediately)
 			}
 			return sended, err
@@ -294,7 +290,7 @@ func (c *Conn) sendBuf(buf []byte) (int, error) {
 
 func (c *Conn) sendLoop() {
 	defer func() {
-		c.logger.Print("XTCP - Conn send loop exit : ", c.RawConn.RemoteAddr())
+		c.logger.LogInfo("XTCP - Conn send loop exit : ", c.RawConn.RemoteAddr())
 		c.wg.Done()
 	}()
 	for {

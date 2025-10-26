@@ -3,17 +3,20 @@ package sensor_server
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
+	"time"
 
 	corepkg "github.com/jurgen-kluft/go-core"
 )
 
 type SensorServerConfig struct {
-	StoragePath          string                //
-	TcpPort              int                   //
-	UdpPort              int                   //
-	FlushPeriodInSeconds int                   // how many seconds before we flush all sensor data again
-	Sensors              []*SensorConfig       //
-	SensorMap            map[int]*SensorConfig //
+	StoragePath          string                   //
+	TcpPort              int                      //
+	UdpPort              int                      //
+	FlushPeriodInSeconds int                      // how many seconds before we flush all sensor data again
+	Sensors              []*SensorConfig          //
+	SensorMap            map[uint64]*SensorConfig //
 }
 
 func newSensorServerConfig() *SensorServerConfig {
@@ -23,7 +26,7 @@ func newSensorServerConfig() *SensorServerConfig {
 		UdpPort:              0,
 		FlushPeriodInSeconds: 15 * 60, // Every 15 minutes, flush to disk
 		Sensors:              nil,
-		SensorMap:            make(map[int]*SensorConfig),
+		SensorMap:            make(map[uint64]*SensorConfig),
 	}
 }
 
@@ -68,7 +71,7 @@ func decodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig 
 		"sensors": func(decoder *corepkg.JsonDecoder) {
 			object.Sensors = make([]*SensorConfig, 0, 4)
 			for !decoder.ReadUntilArrayEnd() {
-				sensor := NewSensorConfig(0, "", Unknown, TypeNone, 0)
+				sensor := NewSensorConfig(0, "", 0, Unknown)
 				object.Sensors = append(object.Sensors, sensor)
 				decodeSensorConfig(decoder, sensor)
 			}
@@ -78,7 +81,9 @@ func decodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig 
 
 	for _, sensor := range object.Sensors {
 		if sensor.Index() >= 0 {
-			object.SensorMap[sensor.Index()] = sensor
+			key := sensor.Mac()
+			key = (key << 8) | uint64(sensor.Id())
+			object.SensorMap[key] = sensor
 		}
 	}
 
@@ -86,20 +91,39 @@ func decodeSensorServerConfig(decoder *corepkg.JsonDecoder) *SensorServerConfig 
 }
 
 type SensorConfig struct {
-	mIndex     int
-	mName      string
-	mType      SensorType
+	mName  string
+	mIndex int
+	mMac   uint64
+	mType  SensorType
+	//
 	mFieldType SensorFieldType
 	mFrequency int32
 }
 
-func NewSensorConfig(index int, name string, sensorType SensorType, fieldType SensorFieldType, frequency int32) *SensorConfig {
-	return &SensorConfig{
-		mIndex:     index,
-		mName:      name,
-		mType:      sensorType,
-		mFieldType: fieldType,
-		mFrequency: frequency,
+func NewSensorConfig(index int, name string, mac uint64, sensorType SensorType) *SensorConfig {
+	cfg := &SensorConfig{
+		mName:  name,
+		mIndex: index,
+		mMac:   mac,
+		mType:  sensorType,
+	}
+	cfg.SetType(sensorType)
+	return cfg
+}
+
+func (s *SensorConfig) SetType(sensorType SensorType) {
+	s.mType = sensorType
+	// determine field type and frequency from sensor type
+	if sensorFieldType, ok := SensorTypeToFieldTypeMap[s.mType]; ok {
+		s.mFieldType = sensorFieldType
+	} else {
+		s.mFieldType = FieldTypeS16
+	}
+
+	if sensorFrequency, ok := SensorTypeToFrequencyMap[s.mType]; ok {
+		s.mFrequency = sensorFrequency
+	} else {
+		s.mFrequency = OneEveryMinute
 	}
 }
 
@@ -107,23 +131,20 @@ func decodeSensorConfig(decoder *corepkg.JsonDecoder, object *SensorConfig) {
 	fields := map[string]corepkg.JsonDecode{
 		"index": func(decoder *corepkg.JsonDecoder) { object.mIndex = int(decoder.DecodeInt32()) },
 		"name":  func(decoder *corepkg.JsonDecoder) { object.mName = decoder.DecodeString() },
+		"mac": func(decoder *corepkg.JsonDecoder) {
+			macStr := decoder.DecodeString()
+			macStr = strings.ReplaceAll(macStr, ":", "")
+			mac, _ := strconv.ParseUint(macStr, 16, 64)
+			object.mMac = mac
+		},
 		"type": func(decoder *corepkg.JsonDecoder) {
 			sensorTypeName := decoder.DecodeString()
 			if st, ok := SensorNameToSensorTypeMap[sensorTypeName]; ok {
-				object.mType = st
+				object.SetType(st)
 			} else {
-				object.mType = Unknown
+				object.SetType(Unknown)
 			}
 		},
-		"field_type": func(decoder *corepkg.JsonDecoder) {
-			fieldTypeName := decoder.DecodeString()
-			if ft, ok := SensorFieldNameToSensorFieldTypeMap[fieldTypeName]; ok {
-				object.mFieldType = ft
-			} else {
-				object.mFieldType = TypeNone
-			}
-		},
-		"frequency": func(decoder *corepkg.JsonDecoder) { object.mFrequency = decoder.DecodeInt32() },
 	}
 	decoder.Decode(fields)
 }
@@ -132,16 +153,24 @@ func (t SensorConfig) Name() string {
 	return t.mName
 }
 
+func (t SensorConfig) Index() int {
+	return int(t.mIndex)
+}
+
+func (t SensorConfig) Id() uint8 {
+	return uint8(t.mType)
+}
+
+func (t SensorConfig) Mac() uint64 {
+	return t.mMac
+}
+
 func (t SensorConfig) FullIdentifier() uint64 {
 	return (uint64(t.mFieldType)<<8)&0xFF | uint64(t.mType)&0xFF | ((uint64(t.mFrequency) << 32) & 0xFFFFFFFF00000000)
 }
 
 func (t SensorConfig) SizeInBits() int {
 	return int(t.mFieldType) & 0x7F
-}
-
-func (t SensorConfig) Index() int {
-	return int(t.mType)
 }
 
 func (t SensorConfig) IsValid() bool {
@@ -156,12 +185,18 @@ func (t SensorConfig) String() string {
 	return t.mName
 }
 
-func (t SensorConfig) SampleFrequency() int32 {
-	return t.mFrequency
+func (t SensorConfig) NumberOfSamplesPerHour() int32 {
+	return int32(60*60*1000) / t.mFrequency
 }
 
-func (t SensorConfig) SamplePeriodInMs() int32 {
-	return 60 * 60 * 1000 / t.mFrequency
+func (t SensorConfig) ToSampleIndex(epoch time.Time, current time.Time) (int32, bool) {
+	elapsedMillis := current.Sub(epoch).Milliseconds()
+	maxIndex := t.NumberOfSamplesPerHour() - 1
+	index := int32(elapsedMillis / int64(t.mFrequency))
+	if index < 0 || index > maxIndex {
+		return 0, false
+	}
+	return index, true
 }
 
 func (t SensorConfig) Type() SensorType {

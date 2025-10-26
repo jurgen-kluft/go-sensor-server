@@ -1,16 +1,17 @@
 package xtcp
 
 import (
-	"log"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/jurgen-kluft/go-sensor-server/logging"
 )
 
 // Server used for running a tcp server.
 type Server struct {
 	Opts    *Options
-	logger  *log.Logger
+	logger  logging.Logger
 	stopped chan struct{}
 	wg      sync.WaitGroup
 	mu      sync.Mutex
@@ -42,7 +43,7 @@ func (s *Server) Serve(l net.Listener) {
 	s.lis = l
 	s.mu.Unlock()
 
-	s.logger.Printf("XTCP - Server listen on: ", l.Addr().String())
+	s.logger.LogInfof("XTCP - Server listen on: %s", l.Addr().String())
 
 	var tempDelay time.Duration // how long to sleep on accept failure
 	maxDelay := 1 * time.Second
@@ -59,7 +60,7 @@ func (s *Server) Serve(l net.Listener) {
 				if tempDelay > maxDelay {
 					tempDelay = maxDelay
 				}
-				s.logger.Printf("XTCP - Server Accept error: %v; retrying in %v", err, tempDelay)
+				s.logger.LogErrorf(err, "XTCP - Server Accept, retrying in %v", tempDelay)
 				select {
 				case <-time.After(tempDelay):
 					continue
@@ -69,7 +70,7 @@ func (s *Server) Serve(l net.Listener) {
 			}
 
 			if !s.IsStopped() {
-				s.logger.Printf("XTCP - Server Accept error: %v; server closed!", err)
+				s.logger.LogError(err, "XTCP - Server Accept, server closed!")
 				s.Stop(StopImmediately)
 			}
 
@@ -123,7 +124,7 @@ func (s *Server) Stop(mode StopMode) {
 			s.wg.Wait()
 		}
 
-		s.logger.Print("XTCP - Server stopped.")
+		s.logger.LogInfo("XTCP - Server stopped.")
 	})
 }
 
@@ -183,7 +184,7 @@ func (s *Server) CurClientCount() int {
 
 // NewServer create a tcp server but not start to accept.
 // The opts will set to all accept conns.
-func NewServer(opts *Options, logger *log.Logger) *Server {
+func NewServer(opts *Options, logger logging.Logger) *Server {
 	if opts.RecvBufSize == 0 {
 		opts.RecvBufSize = DefaultRecvBufSize
 	}
@@ -192,6 +193,7 @@ func NewServer(opts *Options, logger *log.Logger) *Server {
 	}
 	s := &Server{
 		Opts:    opts,
+		logger:  logger,
 		stopped: make(chan struct{}),
 		conns:   make(map[*Conn]bool),
 	}

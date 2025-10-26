@@ -3,23 +3,24 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 
 	sensor_server "github.com/jurgen-kluft/go-sensor-server"
+	"github.com/jurgen-kluft/go-sensor-server/logging"
 	"github.com/jurgen-kluft/go-sensor-server/xtcp"
 	"github.com/jurgen-kluft/go-sensor-server/xudp"
 )
 
 type SensorHandler struct {
+	logger  logging.Logger
 	config  *sensor_server.SensorServerConfig
 	storage *sensor_server.SensorStorage
 }
 
-func newSensorHandler(config *sensor_server.SensorServerConfig) *SensorHandler {
-	storage := sensor_server.NewSensorStorage(config)
-	return &SensorHandler{config: config, storage: storage}
+func newSensorHandler(config *sensor_server.SensorServerConfig, logger logging.Logger) *SensorHandler {
+	storage := sensor_server.NewSensorStorage(config, logger)
+	return &SensorHandler{logger: logger, config: config, storage: storage}
 }
 
 func onShutdown(h *SensorHandler) {
@@ -27,38 +28,48 @@ func onShutdown(h *SensorHandler) {
 }
 
 func (h *SensorHandler) OnTcpAccept(c *xtcp.Conn) {
-	fmt.Println("OnAccept:", c.String())
+	h.logger.LogInfof("OnAccept: %s", c.String())
 }
 
 func (h *SensorHandler) OnTcpConnect(c *xtcp.Conn) {
-	fmt.Println("OnConnect:", c.String())
+	h.logger.LogInfof("OnConnect: %s", c.String())
 }
 
-func (h *SensorHandler) OnTcpRecv(c *xtcp.Conn, p xtcp.Packet) {
-	fmt.Println("OnRecv:", c.String(), "len:", len(p.Body))
+// OnTcpRecv will handle Tcp packets
+func (h *SensorHandler) OnTcpRecv(c *xtcp.Conn, p []byte) {
+	h.logger.LogInfof("OnRecv: %s len: %d", c.String(), len(p))
 
-	// The first packet for this connection should be a sensor packet that contains the MacAddress of the device.
-	sensorPacket, err := sensor_server.DecodeNetworkPacket(h.config.SensorMap, p.Body)
+	sensorPacket, err := sensor_server.DecodeNetworkPacket(h.config.SensorMap, p)
 	if err != nil {
-		fmt.Println("Failed to decode sensor packet:", err)
+		h.logger.LogError(err, "failed to decode sensor packet")
 		c.Stop(xtcp.StopGracefullyAndWait)
 		return
 	}
 
-	if c.UserData >= 0 {
-		for _, v := range sensorPacket.Values {
-			sensorIndex := h.storage.RegisterSensor(v.Sensor)
-			h.storage.WriteSensorValue(sensorIndex, sensorPacket.Time, v)
+	for _, v := range sensorPacket.Values {
+		if err := h.storage.WriteSensorValue(v.Sensor, sensorPacket.Time, v); err != nil {
+			h.logger.LogError(err)
 		}
 	}
 }
 
-// OnRecv Udp
+// OnUdpRecv will handle Udp packets
 func (h *SensorHandler) OnUdpRecv(p []byte) {
+	sensorPacket, err := sensor_server.DecodeNetworkPacket(h.config.SensorMap, p)
+	if err != nil {
+		h.logger.LogError(err, "failed to decode sensor packet")
+		return
+	}
+
+	for _, v := range sensorPacket.Values {
+		if err := h.storage.WriteSensorValue(v.Sensor, sensorPacket.Time, v); err != nil {
+			h.logger.LogError(err)
+		}
+	}
 }
 
 func (h *SensorHandler) OnTcpClose(c *xtcp.Conn) {
-	fmt.Println("OnClose:", c.String())
+	h.logger.LogInfof("OnClose: %s", c.String())
 }
 
 const (
@@ -70,21 +81,26 @@ func run(ctx context.Context) error {
 	var tcpServer *xtcp.Server
 	var udpServer *xudp.Server
 
-	config, err := sensor_server.LoadSensorServerConfig("sensor-server.config.json")
+	logger := logging.NewDefault()
+
+	configFilepath := "sensor-server.config.json"
+	if len(os.Args) > 1 {
+		configFilepath = os.Args[1]
+	}
+	logger.LogInfof("Using config file: %s", configFilepath)
+
+	config, err := sensor_server.LoadSensorServerConfig(configFilepath)
 	if err != nil {
 		return err
 	}
 
-	handler := newSensorHandler(config)
+	handler := newSensorHandler(config, logger)
 	options := xtcp.NewOpts(handler).SetRecvBufSize(1024)
 
-	var (
-		logger = log.New(os.Stdout, "logger: ", log.Lshortfile)
-	)
 	tcpServer = xtcp.NewServer(options, logger)
 	go tcpServer.ListenAndServe(fmt.Sprintf(":%d", config.TcpPort))
 
-	udpServer = xudp.NewServer(xudp.NewOpts(handler))
+	udpServer = xudp.NewServer(xudp.NewOpts(handler), logger)
 	go udpServer.ListenAndServe(fmt.Sprintf(":%d", config.UdpPort))
 
 	for range ctx.Done() {

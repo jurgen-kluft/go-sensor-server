@@ -1,19 +1,19 @@
 # Sensor Server
 
-A tcp server for receiving sensor data in real-time and writing them to disk in an custom structured format.
+A udp/tcp server for receiving sensor data in real-time and writing them to disk in a custom structured format.
 
 Some notes:
 
-- Every sensor is a data stream, and falls under a sensor group which is a device.
+- Every sensor is a data stream
 - Data is very minimal and it should be quite easy to load/use it in a visualization tool
 - Snappy is used upon writing, and reading data to/from disk
 
 ## Status
 
-- Implemention is quite done, there is a simple tcp-server that writes the sensor packets to disk.
+- Implemention is quite done, there is a simple udp and tcp server that writes the sensor packets to disk.
   Status: Beta version, needs testing.
 
-## Data Format
+## Data Size
 
 Example for a Temperature sensor:
 

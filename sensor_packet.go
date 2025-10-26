@@ -11,13 +11,14 @@ import (
 // {
 //     u8  length;    // Number of words in the packet
 //     u8  version;   // Packet version (currently 1)
+//     u8  mac[6];   // MAC address of the sensor device
 //
 //     // sensor value 1
-//     u8 id;             // stream id
+//     u8 id;             // sensor id
 //     u16|s16 value;     // value
 //
 //     // sensor value 2
-//     u8 id;             // stream id
+//     u8 id;             // sensor id
 //     u16|s16 value;     // value
 //
 //     ...
@@ -28,13 +29,16 @@ import (
 const (
 	SensorPacketLengthOffset  = 0
 	SensorPacketVersionOffset = 1
-	SensorPacketHeaderSize    = 1 + 1 // length, version, time-sync
+	SensorPacketMacOffset     = 2
+	SensorPacketHeaderSize    = 1 + 1 + 6
+	SensorPacketDataOffset    = SensorPacketHeaderSize
 )
 
 type SensorPacket struct {
 	Length  uint16
 	Version uint8
 	Time    time.Time
+	Mac     uint64
 	Values  []SensorValue
 }
 
@@ -47,8 +51,17 @@ func (v *SensorValue) IsZero() bool {
 	return v.Value == 0
 }
 
-func DecodeNetworkPacket(sensorMap map[int]*SensorConfig, data []byte) (SensorPacket, error) {
-	if len(data) < 6 {
+func FindSensorConfig(id byte, mac uint64, sensorMap map[uint64]*SensorConfig) *SensorConfig {
+	key := uint64(id) | (mac << 8)
+	if sensor, ok := sensorMap[key]; ok {
+		return sensor
+	}
+	return &SensorConfig{mIndex: int(id), mMac: mac, mName: fmt.Sprintf("unknown_%02X", id)}
+}
+
+func DecodeNetworkPacket(sensorMap map[uint64]*SensorConfig, data []byte) (SensorPacket, error) {
+	// header(8) + one sensor value(1,2) = 11 bytes minimum
+	if len(data) < 11 {
 		return SensorPacket{}, fmt.Errorf("sensor packet, size too small")
 	}
 
@@ -56,41 +69,31 @@ func DecodeNetworkPacket(sensorMap map[int]*SensorConfig, data []byte) (SensorPa
 		Length:  uint16(data[SensorPacketLengthOffset] * 2),
 		Version: uint8(data[SensorPacketVersionOffset]),
 		Time:    time.Now(),
+		Mac:     uint64(binary.LittleEndian.Uint64(data[SensorPacketMacOffset : SensorPacketMacOffset+6])),
 		Values:  nil,
 	}
 
 	if pkt.Version == 1 {
-		if len(data) < int(pkt.Length) {
+		if len(data) != int(pkt.Length) {
 			return pkt, fmt.Errorf("sensor packet, unexpected data length, %d != %d", len(data), pkt.Length)
 		}
 
-		offset := SensorPacketHeaderSize
+		offset := SensorPacketDataOffset
 
 		// Compute the number of sensor values in the packet.
-		numberOfValues := 0
-		for offset <= int(pkt.Length)-2 {
-			index := int(uint(data[offset])<<8 | uint(data[offset+1]))
-			if _, ok := sensorMap[index]; !ok {
-				return pkt, fmt.Errorf("sensor packet, unknown sensor index %d", index)
-			}
-			offset += 2 + 2
-			numberOfValues++
-		}
+		numberOfValues := (int(pkt.Length) - SensorPacketHeaderSize) / 3
 		pkt.Values = make([]SensorValue, 0, numberOfValues)
 
 		// Now decode the values.
-		offset = SensorPacketHeaderSize
+		offset = SensorPacketDataOffset
 
-		for offset <= int(pkt.Length)-2 {
-			index := int(uint(data[offset])<<8 | uint(data[offset+1]))
-			sensor, _ := sensorMap[index]
+		for offset <= int(pkt.Length)-3 {
+			id := data[offset]
+			sensor := FindSensorConfig(id, pkt.Mac, sensorMap)
 			value := SensorValue{Sensor: sensor}
-			offset += 2
-
-			// values are in little-endian format
-			value.Value = int32(binary.LittleEndian.Uint16(data[offset : offset+2]))
+			value.Value = int32(uint32(data[offset+1])<<8 | uint32(data[offset+2]))
 			pkt.Values = append(pkt.Values, value)
-			offset += 2
+			offset += 3
 		}
 		return pkt, nil
 	} else {
@@ -104,8 +107,9 @@ func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
 	}
 
 	// Compute the length of the packet.
-	length := SensorPacketHeaderSize + len(pkt.Values)*(2+2)
-	if length > (2 + 32*2) {
+	length := SensorPacketHeaderSize + len(pkt.Values)*(1+2)
+	length += length & 1 // Padding byte if needed
+	if length > (SensorPacketHeaderSize + 32*3) {
 		return nil, fmt.Errorf("sensor packet, too many values")
 	}
 
@@ -116,26 +120,12 @@ func EncodeNetworkPacket(pkt *SensorPacket) ([]byte, error) {
 
 	offset := SensorPacketHeaderSize
 	for _, v := range pkt.Values {
-		data[offset] = byte(v.Sensor.mIndex>>8) & 0xFF
-		offset++
-		data[offset] = byte(v.Sensor.mIndex & 0xFF)
+		data[offset] = v.Sensor.Id()
 		offset++
 
 		binary.LittleEndian.PutUint16(data[offset:offset+2], uint16(v.Value&0xFFFF))
 		offset += 2
 	}
-
-	// Padding byte if needed
-	if offset < length {
-		data[offset] = 0
-	}
-
-	// Print the encoded packet for debugging
-	// fmt.Printf("Encoded packet (length=%d): ", length)
-	// for i := 0; i < length; i++ {
-	// 	fmt.Printf("%02X ", data[i])
-	// }
-	// fmt.Printf("\n")
 
 	return data, nil
 }
