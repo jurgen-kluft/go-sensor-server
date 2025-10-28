@@ -1,5 +1,7 @@
 package xudp
 
+import "time"
+
 // StopMode define the stop mode of server and conn.
 type StopMode uint8
 
@@ -12,7 +14,7 @@ const (
 // Handler is the event callback.
 // Note : don't block in event handler.
 type Handler interface {
-	OnUdpRecv([]byte) // OnRecv mean conn recv a packet.
+	OnUdpRecv([]byte, time.Time) // OnRecv mean conn recv a packet.
 }
 
 // Options is the options used for net conn.

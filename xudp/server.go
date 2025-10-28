@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/jurgen-kluft/go-sensor-server/logging"
 )
@@ -47,15 +48,16 @@ func (s *Server) Serve(conn *net.UDPConn) {
 
 	s.logger.LogInfo("XUDP - Server listen on: ", conn.LocalAddr().String())
 
+	var buf [1472]byte
 	for {
-		var buf [1472]byte
 		n, _, err := conn.ReadFromUDP(buf[0:])
+		now := time.Now()
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		s.Opts.Handler.OnUdpRecv(buf[0:n])
+		s.Opts.Handler.OnUdpRecv(buf[0:n], now)
 
 		if !s.IsStopped() {
 			s.logger.LogErrorf(err, "XUDP - Server stop error: %v; server closed!")

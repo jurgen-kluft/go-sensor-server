@@ -226,6 +226,7 @@ func (c *Conn) recvLoop() {
 
 			return
 		}
+		now := time.Now()
 
 		recvBuf.Write(tempBuf[:n])
 		atomic.AddUint64(&c.recvBytes, uint64(n))
@@ -235,7 +236,7 @@ func (c *Conn) recvLoop() {
 			length := int(buffer[0]) * 2
 			if int(length) <= len(buffer) {
 				_ = recvBuf.Next(length)
-				c.Opts.Handler.OnTcpRecv(c, buffer[:length])
+				c.Opts.Handler.OnTcpRecv(c, buffer[:length], now)
 			} else {
 				// not enough data for a full packet
 				break
@@ -320,7 +321,7 @@ func (c *Conn) sendLoop() {
 	}
 }
 
-// Send use for send data, can be call in any goroutines.
+// Send use for send data, can be called from any goroutine
 func (c *Conn) Send(buf []byte) (int, error) {
 	if atomic.LoadInt32(&c.state) != connStateNormal {
 		return 0, errSendToClosedConn

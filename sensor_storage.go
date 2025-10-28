@@ -366,7 +366,8 @@ func schedulePeriodicFlush(s *SensorStorage, interval time.Duration) {
 	}()
 }
 
-func (s *SensorStorage) WriteSensorValue(sensorConfig *SensorConfig, packetTime time.Time, sensorValue SensorValue) error {
+func (s *SensorStorage) WriteSensorValue(sensorConfig *SensorConfig, sensorValue SensorValue, sensorTime time.Time) error {
+
 	// Create or get the data block for the given location and sensor type
 	sensorIndex := sensorConfig.Index()
 	if sensorIndex < 0 || sensorIndex >= len(s.sensorStreams) || s.sensorStreams[sensorIndex] == nil {
@@ -374,21 +375,18 @@ func (s *SensorStorage) WriteSensorValue(sensorConfig *SensorConfig, packetTime 
 	}
 	sensorStream := s.sensorStreams[sensorIndex]
 
-	// Current time
-	now := time.Now()
-
 	s.logger.LogInfof("WriteSensorValue: sensor=%s, value=%d", sensorConfig.Name(), sensorValue.Value)
 
 	// Update the sensor stream (check if day has changed, etc..)
-	s.activeSensorStream(sensorStream, now)
+	s.activeSensorStream(sensorStream, time.Now())
 
-	if packetTime.Before(sensorStream.today.Time) {
+	if sensorTime.Before(sensorStream.today.Time) {
 		// If packet is really old (which should not happen) then we drop it
-		if packetTime.Before(sensorStream.yesterday.Time) {
-			return fmt.Errorf("sensor stream packet time is before yesterday block, dropping packet for sensor %s with index %d", sensorConfig.Name(), sensorConfig.Index())
+		if sensorTime.Before(sensorStream.yesterday.Time) {
+			return fmt.Errorf("sensor data time is before yesterday block, dropping packet for sensor %s with index %d", sensorConfig.Name(), sensorConfig.Index())
 		}
 		// Write to the yesterday block if it exists and the time fits
-		if packetTime.After(sensorStream.yesterday.Time) {
+		if sensorTime.After(sensorStream.yesterday.Time) {
 			if sensorStream.yesterday.Content == nil {
 				sensorStream.yesterday.createContentBuffer()
 				s.flushChannel <- sensorStream.yesterday

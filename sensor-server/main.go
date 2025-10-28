@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	sensor_server "github.com/jurgen-kluft/go-sensor-server"
 	"github.com/jurgen-kluft/go-sensor-server/logging"
@@ -35,36 +36,22 @@ func (h *SensorHandler) OnTcpConnect(c *xtcp.Conn) {
 	h.logger.LogInfof("OnConnect: %s", c.String())
 }
 
-// OnTcpRecv will handle Tcp packets
-func (h *SensorHandler) OnTcpRecv(c *xtcp.Conn, p []byte) {
-	h.logger.LogInfof("OnRecv: %s len: %d", c.String(), len(p))
-
-	sensorPacket, err := sensor_server.DecodeNetworkPacket(h.config.SensorMap, p)
+// OnTcpRecv will handle Tcp packets (multi-threaded entry)
+func (h *SensorHandler) OnTcpRecv(c *xtcp.Conn, packetData []byte, packetTime time.Time) {
+	err := sensor_server.DecodeNetworkPacket(h.storage, h.config.SensorMap, packetData, packetTime)
 	if err != nil {
 		h.logger.LogError(err, "failed to decode sensor packet")
 		c.Stop(xtcp.StopGracefullyAndWait)
 		return
 	}
-
-	for _, v := range sensorPacket.Values {
-		if err := h.storage.WriteSensorValue(v.Sensor, sensorPacket.Time, v); err != nil {
-			h.logger.LogError(err)
-		}
-	}
 }
 
 // OnUdpRecv will handle Udp packets
-func (h *SensorHandler) OnUdpRecv(p []byte) {
-	sensorPacket, err := sensor_server.DecodeNetworkPacket(h.config.SensorMap, p)
+func (h *SensorHandler) OnUdpRecv(packetData []byte, packetTime time.Time) {
+	err := sensor_server.DecodeNetworkPacket(h.storage, h.config.SensorMap, packetData, packetTime)
 	if err != nil {
 		h.logger.LogError(err, "failed to decode sensor packet")
 		return
-	}
-
-	for _, v := range sensorPacket.Values {
-		if err := h.storage.WriteSensorValue(v.Sensor, sensorPacket.Time, v); err != nil {
-			h.logger.LogError(err)
-		}
 	}
 }
 

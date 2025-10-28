@@ -26,7 +26,7 @@ func (h *EchoHandler) OnTcpConnect(c *xtcp.Conn) {
 	fmt.Println("OnConnect:", c.String())
 }
 
-func (h *EchoHandler) OnTcpRecv(c *xtcp.Conn, p []byte) {
+func (h *EchoHandler) OnTcpRecv(c *xtcp.Conn, p []byte, t time.Time) {
 	fmt.Println("OnRecv:", c.String(), "len:", len(p))
 }
 
