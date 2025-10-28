@@ -2,6 +2,7 @@
 	"storage": "$HOME/sensor-server/appartment",
 	"tcp_port": 31372,
 	"udp_port": 31370,
+	"ipc_port": "/tmp/sensor-server.sock",
 	"flush": 300,
 	"sensors": [
 		{"index": 0, "name": "frontdoor", "mac": "00:00:00:00:00:01", "type": "openclose"},

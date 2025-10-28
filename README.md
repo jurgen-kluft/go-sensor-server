@@ -7,7 +7,7 @@ Some notes:
 - Every sensor is a data stream
 - Data is very minimal and it should be quite easy to load/use it in a visualization tool
 - TODO: Snappy is used upon writing, and reading data to/from disk
-- One or more local clients can connect through unix domain sockets to receive real-time data. 
+- One or more (local) clients can connect through unix domain sockets to receive real-time data. 
   The data is a simple array of the following format:
   - `{uint16 Sensor Index, uint16 Sensor Value}`
 
