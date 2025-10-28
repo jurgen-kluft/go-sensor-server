@@ -18,16 +18,18 @@ import (
 // Storage for sensor data
 // One sensor store for [DeviceLocation | SensorType]
 // DeviceLocation is associated with
-type sensorStream struct {
-	sensor    *SensorConfig      // Sensor for this stream
+type SensorStream struct {
+	Value     int32              // Current value for this stream
+	Sensor    *SensorConfig      // Sensor for this stream
 	reference time.Time          // Reference time for this stream
 	today     *sensorStreamBlock // Data block for today
 	yesterday *sensorStreamBlock // Data block for yesterday
 }
 
-func newSensorStream(sensor *SensorConfig) *sensorStream {
-	return &sensorStream{
-		sensor:    sensor,
+func newSensorStream(sensor *SensorConfig) *SensorStream {
+	return &SensorStream{
+		Value:     0,
+		Sensor:    sensor,
 		reference: time.Time{},
 		today:     nil,
 		yesterday: nil,
@@ -35,16 +37,9 @@ func newSensorStream(sensor *SensorConfig) *sensorStream {
 }
 
 // sensorStreamBlock format:
-//   - Year (int)
-//   - Month (int)
-//   - Day (int)
-//   - Hour (int)
-//   - SampleType (int) - bit, int8, int16, int32
-//   - SampleFreq (int) - samples per hour
-//   - DataLength (int) - length of data in bytes
 //   - Data (variable length, depends on SampleType and SampleFreq)
 type sensorStreamBlock struct {
-	Stream     *sensorStream // The parent stream
+	Stream     *SensorStream // The parent stream
 	Time       time.Time     // Time (Year, Month, Day, at zero hour)
 	LastSample SensorValue   // Last sample value
 	Content    []byte        // Content to hold the samples
@@ -55,14 +50,14 @@ const (
 	SensorDataBlockHeaderSize = 64 // Size of the header in bytes
 )
 
-func newSensorStreamBlock(stream *sensorStream, content []byte) *sensorStreamBlock {
+func newSensorStreamBlock(stream *SensorStream, content []byte) *sensorStreamBlock {
 	// Construct the correct time for the start of this block
 	t := time.Now()
 	blockTime := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 
 	// TODO This datablock might already exist on disk, load it instead of creating a new one.
 	//      This can happen when the server crashes and/or restarts during the day.
-	sensor := stream.sensor
+	sensor := stream.Sensor
 	blockSizeInBytes := sensor.NumberOfSamplesPerHour() * int32(sensor.SizeInBits())
 	blockSizeInBytes = blockSizeInBytes + SensorDataBlockHeaderSize
 	block := &sensorStreamBlock{
@@ -85,7 +80,7 @@ func (s *sensorStreamBlock) createContentBuffer() {
 		return // Already created
 	}
 
-	sensor := s.Stream.sensor
+	sensor := s.Stream.Sensor
 
 	blockSizeInBytes := sensor.NumberOfSamplesPerHour() * int32(sensor.SizeInBits())
 	blockSizeInBytes = (blockSizeInBytes + 7) / 8 // Round up to full bytes
@@ -110,7 +105,7 @@ func (s *sensorStreamBlock) WriteSensorValue(sessionReferenceTime time.Time, sen
 
 	sampleTime := time.Now()
 
-	sensor := s.Stream.sensor
+	sensor := s.Stream.Sensor
 
 	var sampleIndex int32
 	if idx, ok := sensor.ToSampleIndex(sessionReferenceTime, sampleTime); ok {
@@ -166,7 +161,7 @@ type SensorStorage struct {
 	config            *SensorServerConfig     // Configuration for the sensor storage
 	logger            logging.Logger          // Logger for logging messages
 	sensorList        []*SensorConfig         // List of sensors
-	sensorStreams     []*sensorStream         // List of sensor streams indexed by sensor index
+	sensorStreams     []*SensorStream         // List of sensor streams indexed by sensor index
 	writeChannel      chan *sensorStreamBlock // Channel for writing data blocks
 	blockHeaderBuffer bytes.Buffer            //
 	blockHeaderWriter io.Writer               //
@@ -181,7 +176,7 @@ func NewSensorStorage(config *SensorServerConfig, logger logging.Logger) *Sensor
 		config:            config,
 		logger:            logger,
 		sensorList:        config.Sensors,
-		sensorStreams:     make([]*sensorStream, 65536),
+		sensorStreams:     make([]*SensorStream, 65536),
 		writeChannel:      make(chan *sensorStreamBlock, 512),
 		blockHeaderBuffer: bytes.Buffer{},
 		blockHeaderWriter: nil,
@@ -221,9 +216,9 @@ func NewSensorStorage(config *SensorServerConfig, logger logging.Logger) *Sensor
 			continue
 		}
 
-		sensorStream := newSensorStream(sensor)
-		storage.sensorStreams[sensor.Index()] = sensorStream
-		storage.setupSensorStream(sensorStream)
+		SensorStream := newSensorStream(sensor)
+		storage.sensorStreams[sensor.Index()] = SensorStream
+		storage.setupSensorStream(SensorStream)
 	}
 
 	// The go-routine that writes data blocks to the file system, receives blocks on the writeChannel
@@ -246,19 +241,19 @@ func (s *SensorStorage) Shutdown() {
 	time.Sleep(1 * time.Second) // Give some time for the flush go-routine to finish
 
 	// Flush all blocks to disk
-	for _, sensorStream := range s.sensorStreams {
-		if sensorStream.today != nil {
-			count := sensorStream.today.isModified.Load()
+	for _, SensorStream := range s.sensorStreams {
+		if SensorStream.today != nil {
+			count := SensorStream.today.isModified.Load()
 			if count > 0 {
-				sensorStream.today.isModified.Add(-count)
-				s.writeChannel <- sensorStream.today
+				SensorStream.today.isModified.Add(-count)
+				s.writeChannel <- SensorStream.today
 			}
 		}
-		if sensorStream.yesterday != nil {
-			count := sensorStream.yesterday.isModified.Load()
+		if SensorStream.yesterday != nil {
+			count := SensorStream.yesterday.isModified.Load()
 			if count > 0 {
-				sensorStream.yesterday.isModified.Add(-count)
-				s.writeChannel <- sensorStream.yesterday
+				SensorStream.yesterday.isModified.Add(-count)
+				s.writeChannel <- SensorStream.yesterday
 			}
 		}
 	}
@@ -285,19 +280,19 @@ func processFlush(s *SensorStorage) {
 
 	toWrite := 0
 	toNil := 0
-	for i, sensorStream := range s.flushQueue {
-		count := sensorStream.isModified.Load()
+	for i, SensorStream := range s.flushQueue {
+		count := SensorStream.isModified.Load()
 		if count > 0 {
-			sensorStream.isModified.Add(-count)
+			SensorStream.isModified.Add(-count)
 			if toWrite == 0 {
 				s.logger.LogInfof("Processing flush queue")
 			}
 			toWrite += 1
-			s.writeChannel <- sensorStream
+			s.writeChannel <- SensorStream
 		}
 
 		// Remove from queue if older than 2 days
-		if now.Sub(sensorStream.Time) >= 48*time.Hour {
+		if now.Sub(SensorStream.Time) >= 48*time.Hour {
 			toNil += 1
 			s.flushQueue[i] = nil
 		}
@@ -373,42 +368,45 @@ func (s *SensorStorage) WriteSensorValue(sensorConfig *SensorConfig, sensorValue
 	if sensorIndex < 0 || sensorIndex >= len(s.sensorStreams) || s.sensorStreams[sensorIndex] == nil {
 		return fmt.Errorf("invalid sensor %s, index %d", sensorConfig.Name(), sensorIndex)
 	}
-	sensorStream := s.sensorStreams[sensorIndex]
+	SensorStream := s.sensorStreams[sensorIndex]
 
 	s.logger.LogInfof("WriteSensorValue: sensor=%s, value=%d", sensorConfig.Name(), sensorValue.Value)
 
 	// Update the sensor stream (check if day has changed, etc..)
-	s.activeSensorStream(sensorStream, time.Now())
+	s.updateSensorStream(SensorStream, time.Now())
 
-	if sensorTime.Before(sensorStream.today.Time) {
+	if sensorTime.Before(SensorStream.today.Time) {
 		// If packet is really old (which should not happen) then we drop it
-		if sensorTime.Before(sensorStream.yesterday.Time) {
+		if sensorTime.Before(SensorStream.yesterday.Time) {
 			return fmt.Errorf("sensor data time is before yesterday block, dropping packet for sensor %s with index %d", sensorConfig.Name(), sensorConfig.Index())
 		}
 		// Write to the yesterday block if it exists and the time fits
-		if sensorTime.After(sensorStream.yesterday.Time) {
-			if sensorStream.yesterday.Content == nil {
-				sensorStream.yesterday.createContentBuffer()
-				s.flushChannel <- sensorStream.yesterday
+		if sensorTime.After(SensorStream.yesterday.Time) {
+			if SensorStream.yesterday.Content == nil {
+				SensorStream.yesterday.createContentBuffer()
+				s.flushChannel <- SensorStream.yesterday
 			}
-			sensorStream.yesterday.WriteSensorValue(sensorStream.reference, sensorValue)
+			SensorStream.yesterday.WriteSensorValue(SensorStream.reference, sensorValue)
 		}
 	} else {
 		// Write the sensor value to the today block's buffer
-		if sensorStream.today.Content == nil {
-			sensorStream.today.createContentBuffer()
-			s.flushChannel <- sensorStream.today
+		if SensorStream.today.Content == nil {
+			SensorStream.today.createContentBuffer()
+			s.flushChannel <- SensorStream.today
 		}
-		sensorStream.today.WriteSensorValue(sensorStream.reference, sensorValue)
+		SensorStream.today.WriteSensorValue(SensorStream.reference, sensorValue)
+
+		// Update the current value
+		SensorStream.Value = sensorValue.Value
 	}
 
 	return nil
 }
 
 // The go-routine for writing data blocks to the file system
-func (s *SensorStorage) getStreamBlockFilepath(stream *sensorStream, time time.Time) string {
+func (s *SensorStorage) getStreamBlockFilepath(stream *SensorStream, time time.Time) string {
 	storePathFilename := fmt.Sprintf("%04d_%02d_%02d.data", time.Year(), time.Month(), time.Day())
-	storeFullFilepath := path.Join(s.config.StoragePath, stream.sensor.Name(), storePathFilename)
+	storeFullFilepath := path.Join(s.config.StoragePath, stream.Sensor.Name(), storePathFilename)
 	storeFullFilepath = os.ExpandEnv(storeFullFilepath)
 	return storeFullFilepath
 }
@@ -456,7 +454,7 @@ func writeStreamBlock(s *SensorStorage, stream *sensorStreamBlock) error {
 	return err
 }
 
-func (s *SensorStorage) loadSensorDataBlockContent(stream *sensorStream, time time.Time) ([]byte, error) {
+func (s *SensorStorage) loadSensorDataBlockContent(stream *SensorStream, time time.Time) ([]byte, error) {
 	// First try to load today's file if it exists
 	storeFullFilepath := s.getStreamBlockFilepath(stream, time)
 
@@ -494,50 +492,50 @@ func (s *SensorStorage) loadSensorDataBlockContent(stream *sensorStream, time ti
 	return content, nil
 }
 
-func (s *SensorStorage) setupSensorStream(sensorStream *sensorStream) error {
+func (s *SensorStorage) setupSensorStream(SensorStream *SensorStream) error {
 	today := time.Now()
-	if currentContent, err := s.loadSensorDataBlockContent(sensorStream, today); err == nil {
-		sensorStream.today = newSensorStreamBlock(sensorStream, currentContent)
+	if currentContent, err := s.loadSensorDataBlockContent(SensorStream, today); err == nil {
+		SensorStream.today = newSensorStreamBlock(SensorStream, currentContent)
 	} else {
-		sensorStream.today = newSensorStreamBlock(sensorStream, nil)
+		SensorStream.today = newSensorStreamBlock(SensorStream, nil)
 	}
 
-	if sensorStream.today.Content != nil {
-		s.flushChannel <- sensorStream.today
+	if SensorStream.today.Content != nil {
+		s.flushChannel <- SensorStream.today
 	}
 
 	yesterday := today.AddDate(0, 0, -1)
-	if yesterdayContent, err := s.loadSensorDataBlockContent(sensorStream, yesterday); err == nil {
-		sensorStream.yesterday = newSensorStreamBlock(sensorStream, yesterdayContent)
+	if yesterdayContent, err := s.loadSensorDataBlockContent(SensorStream, yesterday); err == nil {
+		SensorStream.yesterday = newSensorStreamBlock(SensorStream, yesterdayContent)
 	} else {
-		sensorStream.yesterday = newSensorStreamBlock(sensorStream, nil)
+		SensorStream.yesterday = newSensorStreamBlock(SensorStream, nil)
 	}
 
-	if sensorStream.yesterday.Content != nil {
-		s.flushChannel <- sensorStream.yesterday
+	if SensorStream.yesterday.Content != nil {
+		s.flushChannel <- SensorStream.yesterday
 	}
 
 	return nil
 }
 
-func (s *SensorStorage) activeSensorStream(sensorStream *sensorStream, today time.Time) {
+func (s *SensorStorage) updateSensorStream(SensorStream *SensorStream, today time.Time) {
 
 	// If the day has changed, finalize the today block and start a new one
-	if !sensorStream.today.Time.Equal(time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())) {
-		if sensorStream.today != nil {
-			count := sensorStream.today.isModified.Load()
+	if !SensorStream.today.Time.Equal(time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())) {
+		if SensorStream.today != nil {
+			count := SensorStream.today.isModified.Load()
 			if count > 0 {
-				sensorStream.today.isModified.Add(-count)
-				s.writeChannel <- sensorStream.today
+				SensorStream.today.isModified.Add(-count)
+				s.writeChannel <- SensorStream.today
 			}
 		}
-		sensorStream.yesterday = sensorStream.today
-		sensorStream.today = newSensorStreamBlock(sensorStream, nil)
-		s.flushChannel <- sensorStream.today
+		SensorStream.yesterday = SensorStream.today
+		SensorStream.today = newSensorStreamBlock(SensorStream, nil)
+		s.flushChannel <- SensorStream.today
 	} else {
-		if sensorStream.today.Content == nil {
-			sensorStream.today.createContentBuffer()
-			s.flushChannel <- sensorStream.today
+		if SensorStream.today.Content == nil {
+			SensorStream.today.createContentBuffer()
+			s.flushChannel <- SensorStream.today
 		}
 	}
 }
