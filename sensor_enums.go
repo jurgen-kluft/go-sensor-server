@@ -38,9 +38,9 @@ const (
 	Y           SensorType = 28 // (s16, cm)
 	Z           SensorType = 29 // (s16, cm)
 	RSSI        SensorType = 30 // (s16, dBm)
-	ID_PERF1    SensorType = 31 // Performance Metric 1
-	ID_PERF2    SensorType = 32 // Performance Metric 2
-	ID_PERF3    SensorType = 33 // Performance Metric 3
+	Perf1       SensorType = 31 // Performance Metric 1
+	Perf2       SensorType = 32 // Performance Metric 2
+	Perf3       SensorType = 33 // Performance Metric 3
 	SensorCount            = 34 // The maximum number of sensor types (highest index + 1)
 )
 
@@ -89,9 +89,10 @@ var SensorNameToSensorTypeMap map[string]SensorType = map[string]SensorType{
 	"light":       Light,
 	"co2":         CO2,
 	"voc":         VOC,
-	"pm1_0":       PM1_0,
-	"pm2_5":       PM2_5,
-	"pm10":        PM10,
+	"pm005":       PM005,
+	"pm010":       PM010,
+	"pm025":       PM025,
+	"pm100":       PM100,
 	"noise":       Noise,
 	"uv":          UV,
 	"co":          CO,
@@ -110,6 +111,9 @@ var SensorNameToSensorTypeMap map[string]SensorType = map[string]SensorType{
 	"y":           Y,
 	"z":           Z,
 	"rssi":        RSSI,
+	"perf1":       Perf1,
+	"perf2":       Perf2,
+	"perf3":       Perf3,
 }
 
 var SensorTypeToSensorNameMap map[SensorType]string = map[SensorType]string{
@@ -119,9 +123,10 @@ var SensorTypeToSensorNameMap map[SensorType]string = map[SensorType]string{
 	Light:       "light",
 	CO2:         "co2",
 	VOC:         "voc",
-	PM1_0:       "pm1_0",
-	PM2_5:       "pm2_5",
-	PM10:        "pm10",
+	PM005:       "pm005",
+	PM010:       "pm010",
+	PM025:       "pm025",
+	PM100:       "pm100",
 	Noise:       "noise",
 	UV:          "uv",
 	CO:          "co",
@@ -139,6 +144,9 @@ var SensorTypeToSensorNameMap map[SensorType]string = map[SensorType]string{
 	Y:           "y",
 	Z:           "z",
 	RSSI:        "rssi",
+	Perf1:       "perf1",
+	Perf2:       "perf2",
+	Perf3:       "perf3",
 }
 
 var SensorTypeToFieldTypeMap map[SensorType]SensorFieldType = map[SensorType]SensorFieldType{
@@ -149,9 +157,10 @@ var SensorTypeToFieldTypeMap map[SensorType]SensorFieldType = map[SensorType]Sen
 	Light:       FieldTypeS16,
 	CO2:         FieldTypeS16,
 	VOC:         FieldTypeS16,
-	PM1_0:       FieldTypeS16,
-	PM2_5:       FieldTypeS16,
-	PM10:        FieldTypeS16,
+	PM005:       FieldTypeS16,
+	PM010:       FieldTypeS16,
+	PM025:       FieldTypeS16,
+	PM100:       FieldTypeS16,
 	Noise:       FieldTypeS16,
 	UV:          FieldTypeS16,
 	CO:          FieldTypeS16,
@@ -167,6 +176,9 @@ var SensorTypeToFieldTypeMap map[SensorType]SensorFieldType = map[SensorType]Sen
 	Y:           FieldTypeS16,
 	Z:           FieldTypeS16,
 	RSSI:        FieldTypeS16,
+	Perf1:       FieldTypeS16,
+	Perf2:       FieldTypeS16,
+	Perf3:       FieldTypeS16,
 }
 
 // Frequency unit is milliseconds
@@ -187,9 +199,10 @@ var SensorTypeToFrequencyMap map[SensorType]int32 = map[SensorType]int32{
 	Light:       OneEveryHalfMinute,
 	CO2:         OnePerTwoMinutes,
 	VOC:         OnePerTwoMinutes,
-	PM1_0:       OnePerTwoMinutes,
-	PM2_5:       OnePerTwoMinutes,
-	PM10:        OnePerTwoMinutes,
+	PM005:       OnePerTwoMinutes,
+	PM010:       OnePerTwoMinutes,
+	PM025:       OnePerTwoMinutes,
+	PM100:       OnePerTwoMinutes,
 	Noise:       OneEveryTenSeconds,
 	UV:          OneEveryMinute,
 	CO:          OneEveryTenSeconds,
@@ -205,4 +218,7 @@ var SensorTypeToFrequencyMap map[SensorType]int32 = map[SensorType]int32{
 	Y:           OneEveryHalfSecond,
 	Z:           OneEveryHalfSecond,
 	RSSI:        OneEveryTenSeconds,
+	Perf1:       OneEveryMinute,
+	Perf2:       OneEveryMinute,
+	Perf3:       OneEveryMinute,
 }
