@@ -1,6 +1,0 @@
-{
-  "storage": "$HOME/sensor-server/data",
-  "flush": 900,
-  "tcp_port": 31339,
-  "udp_port": 31342
-}
