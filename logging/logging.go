@@ -1,11 +1,13 @@
 package logging
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,16 +24,19 @@ const (
 	LevelError
 	LevelWarning
 	LevelInfo
+	LevelDebug
 )
 
 type Logger interface {
 	SetLevel(level LogLevel)
 
+	LogDebug(v ...any)
 	LogFatal(err error, v ...any)
 	LogError(err error, v ...any)
 	LogWarning(v ...any)
 	LogInfo(v ...any)
 
+	LogDebugf(format string, v ...any)
 	LogFatalf(err error, format string, v ...any)
 	LogErrorf(err error, format string, v ...any)
 	LogWarningf(format string, v ...any)
@@ -39,77 +44,193 @@ type Logger interface {
 }
 
 type DefaultLogger struct {
-	ogLogLevel    LogLevel
+	ogLogLevel    atomic.Int32
+	ogDebugLogger *StdLogger
 	ogFatalLogger *StdLogger
 	ogErrLogger   *StdLogger
 	ogWarnLogger  *StdLogger
 	ogInfoLogger  *StdLogger
+	ownedOutput   io.Closer
+	closeOnce     sync.Once
+	closeErr      error
 }
 
 func NewDefault() Logger {
-	return &DefaultLogger{
-		ogLogLevel:    LevelInfo,
+	logger := &DefaultLogger{
+		ogDebugLogger: NewStdLogger(os.Stderr, "DEBUG: ", log.Ldate|log.Ltime|log.Lshortfile),
 		ogFatalLogger: NewStdLogger(os.Stderr, "FATAL: ", log.Ldate|log.Ltime|log.Lshortfile),
 		ogErrLogger:   NewStdLogger(os.Stderr, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile),
-		ogWarnLogger:  NewStdLogger(os.Stdout, "WARN: ", log.Ldate|log.Ltime|log.Lshortfile),
-		ogInfoLogger:  NewStdLogger(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile),
+		ogWarnLogger:  NewStdLogger(os.Stderr, "WARN: ", log.Ldate|log.Ltime|log.Lshortfile),
+		ogInfoLogger:  NewStdLogger(os.Stderr, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile),
+	}
+	logger.SetLevel(LevelInfo)
+	return logger
+}
+
+func New(level, output string) (*DefaultLogger, error) {
+	parsedLevel, err := ParseLevel(level)
+	if err != nil {
+		return nil, err
+	}
+	var writer io.Writer
+	var owned io.Closer
+	switch output {
+	case "stdout":
+		writer = os.Stdout
+	case "stderr", "":
+		writer = os.Stderr
+	default:
+		file, err := os.OpenFile(output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			return nil, fmt.Errorf("open log output %q: %w", output, err)
+		}
+		writer, owned = file, file
+	}
+	flags := log.Ldate | log.Ltime | log.Lshortfile
+	logger := &DefaultLogger{
+		ogDebugLogger: NewStdLogger(writer, "DEBUG: ", flags),
+		ogFatalLogger: NewStdLogger(writer, "FATAL: ", flags),
+		ogErrLogger:   NewStdLogger(writer, "ERROR: ", flags),
+		ogWarnLogger:  NewStdLogger(writer, "WARN: ", flags),
+		ogInfoLogger:  NewStdLogger(writer, "INFO: ", flags),
+		ownedOutput:   owned,
+	}
+	logger.SetLevel(parsedLevel)
+	return logger, nil
+}
+
+func ParseLevel(value string) (LogLevel, error) {
+	switch strings.ToLower(value) {
+	case "disabled", "none":
+		return LevelNone, nil
+	case "error":
+		return LevelError, nil
+	case "warn", "warning":
+		return LevelWarning, nil
+	case "info", "":
+		return LevelInfo, nil
+	case "debug":
+		return LevelDebug, nil
+	default:
+		return LevelNone, fmt.Errorf("unsupported log level %q", value)
 	}
 }
 
 func (l *DefaultLogger) SetLevel(level LogLevel) {
-	l.ogLogLevel = level
+	l.ogLogLevel.Store(int32(level))
+}
+
+func (l *DefaultLogger) LogDebug(v ...any) {
+	if LevelDebug <= l.level() {
+		l.ogDebugLogger.Println(v...)
+	}
 }
 
 func (l *DefaultLogger) LogFatal(err error, v ...any) {
-	if LevelFatal <= l.ogLogLevel {
+	if LevelFatal <= l.level() {
 		l.ogFatalLogger.Print(err)
 		l.ogFatalLogger.Println(v...)
 	}
 }
 
 func (l *DefaultLogger) LogError(err error, v ...any) {
-	if LevelError <= l.ogLogLevel {
+	if LevelError <= l.level() {
 		l.ogErrLogger.Print(err)
 		l.ogErrLogger.Println(v...)
 	}
 }
 
 func (l *DefaultLogger) LogWarning(v ...any) {
-	if LevelWarning <= l.ogLogLevel {
+	if LevelWarning <= l.level() {
 		l.ogWarnLogger.Println(v...)
 	}
 }
 
 func (l *DefaultLogger) LogInfo(v ...any) {
-	if LevelInfo <= l.ogLogLevel {
+	if LevelInfo <= l.level() {
 		l.ogInfoLogger.Print(v...)
 	}
 }
 
+func (l *DefaultLogger) LogDebugf(format string, v ...any) {
+	if LevelDebug <= l.level() {
+		l.ogDebugLogger.Printf(format, v...)
+	}
+}
+
 func (l *DefaultLogger) LogFatalf(err error, format string, v ...any) {
-	if LevelFatal <= l.ogLogLevel {
+	if LevelFatal <= l.level() {
 		l.ogFatalLogger.Print(err)
 		l.ogFatalLogger.Printf(format, v...)
 	}
 }
 
 func (l *DefaultLogger) LogErrorf(err error, format string, v ...any) {
-	if LevelError <= l.ogLogLevel {
+	if LevelError <= l.level() {
 		l.ogErrLogger.Print(err)
 		l.ogErrLogger.Printf(format, v...)
 	}
 }
 
 func (l *DefaultLogger) LogWarningf(format string, v ...any) {
-	if LevelWarning <= l.ogLogLevel {
+	if LevelWarning <= l.level() {
 		l.ogWarnLogger.Printf(format, v...)
 	}
 }
 
 func (l *DefaultLogger) LogInfof(format string, v ...any) {
-	if LevelInfo <= l.ogLogLevel {
+	if LevelInfo <= l.level() {
 		l.ogInfoLogger.Printf(format, v...)
-		//l.ogInfoLogger.Println()
+	}
+}
+
+func (l *DefaultLogger) Close() error {
+	l.closeOnce.Do(func() {
+		if l.ownedOutput != nil {
+			l.closeErr = l.ownedOutput.Close()
+		}
+	})
+	return l.closeErr
+}
+
+func (l *DefaultLogger) level() LogLevel {
+	return LogLevel(l.ogLogLevel.Load())
+}
+
+type RateLimiter struct {
+	interval time.Duration
+	now      func() time.Time
+	mu       sync.Mutex
+	last     map[string]time.Time
+}
+
+func NewRateLimiter(interval time.Duration, now func() time.Time) (*RateLimiter, error) {
+	if interval <= 0 {
+		return nil, errors.New("new log rate limiter: interval must be positive")
+	}
+	if now == nil {
+		now = time.Now
+	}
+	return &RateLimiter{interval: interval, now: now, last: make(map[string]time.Time)}, nil
+}
+
+func (limiter *RateLimiter) Allow(key string) bool {
+	now := limiter.now()
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	last, exists := limiter.last[key]
+	if exists && now.Sub(last) < limiter.interval {
+		return false
+	}
+	limiter.last[key] = now
+	return true
+}
+
+func (limiter *RateLimiter) WarningCallback(logger Logger) func(error) {
+	return func(err error) {
+		if err != nil && limiter.Allow(err.Error()) {
+			logger.LogWarning(err)
+		}
 	}
 }
 
@@ -338,43 +459,34 @@ func (l *StdLogger) Println(v ...any) {
 	})
 }
 
-// Fatal is equivalent to l.Print() followed by a call to [os.Exit](1).
+// Fatal logs at the compatibility call site. Process termination belongs to main.
 func (l *StdLogger) Fatal(v ...any) {
 	l.Output(l.depth, fmt.Sprint(v...))
-	os.Exit(1)
 }
 
-// Fatalf is equivalent to l.Printf() followed by a call to [os.Exit](1).
+// Fatalf logs at the compatibility call site. Process termination belongs to main.
 func (l *StdLogger) Fatalf(format string, v ...any) {
 	l.Output(l.depth, fmt.Sprintf(format, v...))
-	os.Exit(1)
 }
 
-// Fatalln is equivalent to l.Println() followed by a call to [os.Exit](1).
+// Fatalln logs at the compatibility call site. Process termination belongs to main.
 func (l *StdLogger) Fatalln(v ...any) {
 	l.Output(l.depth, fmt.Sprintln(v...))
-	os.Exit(1)
 }
 
-// Panic is equivalent to l.Print() followed by a call to panic().
+// Panic logs at the compatibility call site without panicking.
 func (l *StdLogger) Panic(v ...any) {
-	s := fmt.Sprint(v...)
-	l.Output(l.depth, s)
-	panic(s)
+	l.Output(l.depth, fmt.Sprint(v...))
 }
 
-// Panicf is equivalent to l.Printf() followed by a call to panic().
+// Panicf logs at the compatibility call site without panicking.
 func (l *StdLogger) Panicf(format string, v ...any) {
-	s := fmt.Sprintf(format, v...)
-	l.Output(l.depth, s)
-	panic(s)
+	l.Output(l.depth, fmt.Sprintf(format, v...))
 }
 
-// Panicln is equivalent to l.Println() followed by a call to panic().
+// Panicln logs at the compatibility call site without panicking.
 func (l *StdLogger) Panicln(v ...any) {
-	s := fmt.Sprintln(v...)
-	l.Output(l.depth, s)
-	panic(s)
+	l.Output(l.depth, fmt.Sprintln(v...))
 }
 
 // Flags returns the output flags for the logger.
@@ -467,43 +579,34 @@ func Println(v ...any) {
 	})
 }
 
-// Fatal is equivalent to [Print] followed by a call to [os.Exit](1).
+// Fatal logs without terminating the process.
 func Fatal(v ...any) {
 	std.Output(3, fmt.Sprint(v...))
-	os.Exit(1)
 }
 
-// Fatalf is equivalent to [Printf] followed by a call to [os.Exit](1).
+// Fatalf logs without terminating the process.
 func Fatalf(format string, v ...any) {
 	std.Output(3, fmt.Sprintf(format, v...))
-	os.Exit(1)
 }
 
-// Fatalln is equivalent to [Println] followed by a call to [os.Exit](1).
+// Fatalln logs without terminating the process.
 func Fatalln(v ...any) {
 	std.Output(3, fmt.Sprintln(v...))
-	os.Exit(1)
 }
 
-// Panic is equivalent to [Print] followed by a call to panic().
+// Panic logs without panicking.
 func Panic(v ...any) {
-	s := fmt.Sprint(v...)
-	std.Output(3, s)
-	panic(s)
+	std.Output(3, fmt.Sprint(v...))
 }
 
-// Panicf is equivalent to [Printf] followed by a call to panic().
+// Panicf logs without panicking.
 func Panicf(format string, v ...any) {
-	s := fmt.Sprintf(format, v...)
-	std.Output(3, s)
-	panic(s)
+	std.Output(3, fmt.Sprintf(format, v...))
 }
 
-// Panicln is equivalent to [Println] followed by a call to panic().
+// Panicln logs without panicking.
 func Panicln(v ...any) {
-	s := fmt.Sprintln(v...)
-	std.Output(3, s)
-	panic(s)
+	std.Output(3, fmt.Sprintln(v...))
 }
 
 // Output writes the output for a logging event. The string s contains
