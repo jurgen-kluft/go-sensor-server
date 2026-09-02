@@ -16,11 +16,11 @@ var (
 
 type SensorData struct {
 	Timestamp int64
-	Value     int16
+	Value     int32
 }
 
 type RecordWriter interface {
-	WriteRecord(timestamp int64, value int16) error
+	WriteRecord(timestamp int64, value int32) error
 	Flush() error
 	Close() error
 }

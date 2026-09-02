@@ -77,6 +77,7 @@ var AreaNamesToType = map[string]AreaType{
 	"Front Garden":    AreaFrontGarden,
 	"Back Garden":     AreaBackGarden,
 	"Car Park":        AreaCarPark,
+	"LivingRoom":      Area1stLivingRoom,
 	"1st Living Room": Area1stLivingRoom,
 	"1st Kitchen":     Area1stKitchen,
 	"1st Bedroom":     Area1stBedroom,

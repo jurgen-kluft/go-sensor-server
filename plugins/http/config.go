@@ -6,23 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net"
-
-	sensorserver "github.com/jurgen-kluft/go-sensor-server/sensor-server"
 )
 
 const DefaultHistoryCapacity = 1000
 
-type Threshold struct {
-	SensorType sensorserver.SensorType `json:"sensor_type"`
-	Minimum    *int16                  `json:"minimum,omitempty"`
-	Maximum    *int16                  `json:"maximum,omitempty"`
-}
-
 type Config struct {
-	Enabled         bool        `json:"enabled"`
-	Address         string      `json:"address"`
-	HistoryCapacity int         `json:"history_capacity"`
-	Thresholds      []Threshold `json:"thresholds"`
+	Enabled         bool   `json:"enabled"`
+	Address         string `json:"address"`
+	HistoryCapacity int    `json:"history_capacity"`
 }
 
 func LoadConfig(reader io.Reader) (Config, error) {

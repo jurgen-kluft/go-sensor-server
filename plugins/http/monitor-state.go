@@ -74,7 +74,6 @@ type deviceState struct {
 type MonitoringState struct {
 	mu              sync.RWMutex
 	historyCapacity int
-	thresholds      map[sensorserver.SensorType]Threshold
 	devices         map[sensorserver.MACAddress]*deviceState
 	events          *eventHub
 }
@@ -83,13 +82,8 @@ func NewMonitoringState(config Config) (*MonitoringState, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	thresholds := make(map[sensorserver.SensorType]Threshold, len(config.Thresholds))
-	for _, threshold := range config.Thresholds {
-		thresholds[threshold.SensorType] = threshold
-	}
 	return &MonitoringState{
 		historyCapacity: config.HistoryCapacity,
-		thresholds:      thresholds,
 		devices:         make(map[sensorserver.MACAddress]*deviceState),
 		events:          newEventHub(),
 	}, nil
@@ -187,7 +181,7 @@ func (state *MonitoringState) Devices(snapshot *sensorserver.ConfigSnapshot) []D
 	result := make([]DeviceSnapshot, 0, len(configured.Devices))
 	for _, configuredDevice := range configured.Devices {
 		mac, _ := sensorserver.ParseMACAddress(configuredDevice.MAC)
-		result = append(result, state.snapshotDevice(mac, configuredDevice.Area, false))
+		result = append(result, state.snapshotDevice(snapshot, mac, configuredDevice.Area, false))
 	}
 	sort.Slice(result, func(left, right int) bool { return result[left].MAC < result[right].MAC })
 	return result
@@ -201,7 +195,7 @@ func (state *MonitoringState) Device(snapshot *sensorserver.ConfigSnapshot, mac 
 	state.mu.RLock()
 	defer state.mu.RUnlock()
 	areaName := configuredDevice.Area.String()
-	return state.snapshotDevice(mac, areaName, true), true
+	return state.snapshotDevice(snapshot, mac, areaName, true), true
 }
 
 func (state *MonitoringState) Readings(mac sensorserver.MACAddress, sensorID sensorserver.SensorType) ([]Sample, bool) {
@@ -230,21 +224,22 @@ func (state *MonitoringState) device(mac sensorserver.MACAddress, area string) *
 	return device
 }
 
-func (state *MonitoringState) thresholdWarning(sensorType sensorserver.SensorType, value int16) string {
-	threshold, exists := state.thresholds[sensorType]
+func (state *MonitoringState) thresholdWarning(sensorType sensorserver.SensorType, value int32) string {
+	//threshold, exists := state.thresholds[sensorType]
+	threshold, exists := sensorserver.SensorTypeValueRanges[sensorType]
 	if !exists {
 		return ""
 	}
-	if threshold.Minimum != nil && value < *threshold.Minimum {
-		return fmt.Sprintf("%s value %d is below minimum %d", sensorType, value, *threshold.Minimum)
+	if value < threshold.Min {
+		return fmt.Sprintf("%s value %d is below minimum %d", sensorType, value, threshold.Min)
 	}
-	if threshold.Maximum != nil && value > *threshold.Maximum {
-		return fmt.Sprintf("%s value %d is above maximum %d", sensorType, value, *threshold.Maximum)
+	if value > threshold.Max {
+		return fmt.Sprintf("%s value %d is above maximum %d", sensorType, value, threshold.Max)
 	}
 	return ""
 }
 
-func (state *MonitoringState) snapshotDevice(mac sensorserver.MACAddress, area string, includeSensors bool) DeviceSnapshot {
+func (state *MonitoringState) snapshotDevice(snapshot *sensorserver.ConfigSnapshot, mac sensorserver.MACAddress, area string, includeSensors bool) DeviceSnapshot {
 	result := DeviceSnapshot{MAC: formatMAC(mac), Area: area, Warnings: []string{}}
 	device := state.devices[mac]
 	if device != nil {
@@ -264,21 +259,18 @@ func (state *MonitoringState) snapshotDevice(mac sensorserver.MACAddress, area s
 	if !includeSensors {
 		return result
 	}
-	for sensorType, sensorTypeName := range sensorserver.SensorTypeNames {
-		unitString := sensorserver.UnitForSensorType(sensorType).String()
-		sensorSnapshot := SensorSnapshot{ID: uint16(sensorType), Type: sensorTypeName, Unit: unitString}
-		if device != nil {
-			if sensor := device.sensors[sensorType]; sensor != nil {
-				sensorSnapshot.Seen = sensor.seen
-				sensorSnapshot.Warning = sensor.warning
-				sensorSnapshot.SampleCount = sensor.history.count
-				if sensor.seen {
-					current := sensor.current
-					sensorSnapshot.Current = &current
-				}
+	if device != nil {
+		for sensorType, sensor := range device.sensors {
+			sensorSnapshot := SensorSnapshot{
+				ID: uint16(sensorType), Type: sensorserver.SensorTypeNames[sensorType], Unit: sensor.definition.Unit.String(),
+				Seen: sensor.seen, Warning: sensor.warning, SampleCount: sensor.history.count,
 			}
+			if sensor.seen {
+				current := sensor.current
+				sensorSnapshot.Current = &current
+			}
+			result.Sensors = append(result.Sensors, sensorSnapshot)
 		}
-		result.Sensors = append(result.Sensors, sensorSnapshot)
 	}
 	sort.Slice(result.Sensors, func(left, right int) bool { return result.Sensors[left].ID < result.Sensors[right].ID })
 	return result

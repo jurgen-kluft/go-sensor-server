@@ -28,7 +28,7 @@ func TestDataEngineCreatesOneStreamForConcurrentWrites(t *testing.T) {
 		waitGroup.Add(1)
 		go func(value int) {
 			defer waitGroup.Done()
-			if err := engine.WriteSensorData(context.Background(), Area1stLivingRoom, SENSOR_ID_TEMPERATURE, int64(value), int16(value)); err != nil {
+			if err := engine.WriteSensorData(context.Background(), Area1stLivingRoom, SENSOR_ID_TEMPERATURE, int64(value), int32(value)); err != nil {
 				t.Errorf("WriteSensorData() error = %v", err)
 			}
 		}(index)
@@ -56,8 +56,8 @@ func TestDataEngineSeparatesStreamKeys(t *testing.T) {
 	}
 	defer engine.Close()
 
-	areas := []AreaType{Area1stKitchen, Area1stLivingRoom}
-	sensors := []SensorType{SENSOR_ID_TEMPERATURE, SENSOR_ID_HUMIDITY}
+	areas := []AreaType{Area1stKitchen, Area1stLivingRoom, Area1stBedroom}
+	sensors := []SensorType{SENSOR_ID_TEMPERATURE, SENSOR_ID_HUMIDITY, SENSOR_ID_PRESSURE}
 
 	for i, area := range areas {
 		sensor := sensors[i%len(sensors)]
@@ -161,7 +161,7 @@ type recordingWriter struct {
 	closes   int
 }
 
-func (writer *recordingWriter) WriteRecord(timestamp int64, value int16) error {
+func (writer *recordingWriter) WriteRecord(timestamp int64, value int32) error {
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
 	if writer.failures > 0 {

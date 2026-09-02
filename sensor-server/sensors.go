@@ -139,8 +139,8 @@ func ToSensorType(id uint16) SensorType {
 }
 
 type SensorTypeValueRange struct {
-	Min int32
-	Max int32
+	Min int32 // int24
+	Max int32 // int24
 }
 
 var SensorTypeValueRanges = map[SensorType]SensorTypeValueRange{
@@ -195,12 +195,12 @@ var SensorTypeValueRanges = map[SensorType]SensorTypeValueRange{
 	SENSOR_ID_VOLTAGE:     {Min: 0, Max: 5000},
 	SENSOR_ID_CURRENT:     {Min: -2000, Max: 2000},
 	SENSOR_ID_POWER:       {Min: -100000, Max: 100000},
-	SENSOR_ID_ENERGY:      {Min: 0, Max: 10000000},
+	SENSOR_ID_ENERGY:      {Min: 0, Max: 16000000},
 	SENSOR_ID_JSON:        {Min: 0, Max: 0},
 	SENSOR_ID_IMAGE:       {Min: 0, Max: 0},
-	SENSOR_ID_GAS_M3:      {Min: 0, Max: 10000000},
-	SENSOR_ID_WATER_M3:    {Min: 0, Max: 10000000},
-	SENSOR_ID_kWAh:        {Min: 0, Max: 10000000},
+	SENSOR_ID_GAS_M3:      {Min: 0, Max: 16000000},
+	SENSOR_ID_WATER_M3:    {Min: 0, Max: 16000000},
+	SENSOR_ID_kWAh:        {Min: 0, Max: 16000000},
 }
 
 var SensorTypeNames = map[SensorType]string{

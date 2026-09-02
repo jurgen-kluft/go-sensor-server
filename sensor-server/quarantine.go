@@ -16,11 +16,11 @@ import (
 )
 
 const (
-	quarantineMagic        uint32 = 0x514D5347
-	quarantineVersion      uint16 = 1
-	quarantineHeaderSize          = 30
-	quarantineTrailerSize         = 4
-	quarantineEntryMinimum        = quarantineHeaderSize + quarantineTrailerSize
+	cQuarantineMagic        uint32 = 0x514D5347
+	cQuarantineVersion      uint16 = 1
+	cQuarantineHeaderSize          = 30
+	cQuarantineTrailerSize         = 4
+	cQuarantineEntryMinimum        = cQuarantineHeaderSize + cQuarantineTrailerSize
 )
 
 var (
@@ -61,7 +61,7 @@ func OpenQuarantineWriter(fileSystem FileSystem, options QuarantineOptions) (*Qu
 	if strings.TrimSpace(options.Directory) == "" {
 		return nil, errors.New("open quarantine: empty directory")
 	}
-	if options.RotationSize < quarantineEntryMinimum {
+	if options.RotationSize < cQuarantineEntryMinimum {
 		return nil, errors.New("open quarantine: rotation size is too small")
 	}
 	if options.DirectoryMode == 0 {
@@ -231,54 +231,77 @@ func encodeQuarantineEntry(message UnknownMessage) ([]byte, error) {
 	if len(payload) != int(message.Message.Header.PayloadLength) || len(payload) > MaximumPayloadSize {
 		return nil, fmt.Errorf("encode quarantine: payload length: %w", ErrInvalidQuarantineEntry)
 	}
-	totalLength := quarantineEntryMinimum + len(payload)
+	totalLength := cQuarantineEntryMinimum + len(payload)
+
 	encoded := make([]byte, totalLength)
-	binary.LittleEndian.PutUint32(encoded[0:4], quarantineMagic)
-	binary.LittleEndian.PutUint16(encoded[4:6], quarantineVersion)
-	binary.LittleEndian.PutUint32(encoded[6:10], uint32(totalLength))
-	binary.LittleEndian.PutUint64(encoded[10:18], uint64(message.Timestamp))
-	encoded[18] = byte(message.Transport)
-	encoded[19] = 0
-	binary.LittleEndian.PutUint16(encoded[20:22], uint16(message.Message.Header.Type))
-	copy(encoded[22:28], message.Message.Header.MAC[:])
-	binary.LittleEndian.PutUint16(encoded[28:30], uint16(len(payload)))
-	copy(encoded[30:30+len(payload)], payload)
-	binary.LittleEndian.PutUint32(encoded[totalLength-4:], crc32.ChecksumIEEE(encoded[4:totalLength-4]))
+
+	binaryData := &BinaryData{buf: encoded, off: 0}
+	binaryData.WriteUint32(cQuarantineMagic)
+	binaryData.WriteUint16(cQuarantineVersion)
+	binaryData.WriteUint32(0) // placeholder for CRC
+	binaryData.WriteUint32(uint32(totalLength))
+	binaryData.WriteUint64(uint64(message.Timestamp))
+	binaryData.WriteUint8(byte(message.Transport))
+	binaryData.WriteUint8(0)
+	binaryData.WriteUint16(uint16(message.Message.Header.Type))
+	binaryData.WriteBytes(message.Message.Header.MAC[:])
+	binaryData.WriteUint16(uint16(len(payload)))
+	binaryData.WriteBytes(payload)
+
+	// Compute CRC and write it into the placeholder
+	crc := crc32.ChecksumIEEE(encoded)
+	binaryData.WriteUint32At(crc, 6)
+
 	return encoded, nil
 }
 
 func decodeQuarantineEntry(encoded []byte) (UnknownMessage, error) {
-	if len(encoded) < quarantineEntryMinimum || binary.LittleEndian.Uint32(encoded[:4]) != quarantineMagic {
+	if len(encoded) < cQuarantineEntryMinimum {
 		return UnknownMessage{}, ErrInvalidQuarantineEntry
 	}
-	if binary.LittleEndian.Uint16(encoded[4:6]) != quarantineVersion || int(binary.LittleEndian.Uint32(encoded[6:10])) != len(encoded) {
+
+	binaryData := &BinaryData{buf: encoded, off: 0}
+	quarantineMagic := binaryData.ReadUint32()
+	quarantineVersion := binaryData.ReadUint16()
+	wantedCRC := binaryData.ReadUint32()
+	encodedLength := binaryData.ReadUint32()
+	timeStamp := binaryData.ReadUint64()
+	transport := Transport(binaryData.ReadUint8())
+	_ = binaryData.ReadUint8() // reserved
+	headerType := MessageType(binaryData.ReadUint16())
+	mac := binaryData.ReadMAC() // mac
+	payloadLength := binaryData.ReadUint16()
+
+	if quarantineMagic != cQuarantineMagic || quarantineVersion != cQuarantineVersion {
 		return UnknownMessage{}, ErrInvalidQuarantineEntry
 	}
-	wantCRC := binary.LittleEndian.Uint32(encoded[len(encoded)-4:])
-	if crc32.ChecksumIEEE(encoded[4:len(encoded)-4]) != wantCRC {
-		return UnknownMessage{}, fmt.Errorf("quarantine checksum: %w", ErrInvalidQuarantineEntry)
-	}
-	payloadLength := int(binary.LittleEndian.Uint16(encoded[28:30]))
-	if quarantineEntryMinimum+payloadLength != len(encoded) {
+	if encodedLength != uint32(len(encoded)) || int(payloadLength) > MaximumPayloadSize {
 		return UnknownMessage{}, ErrInvalidQuarantineEntry
 	}
-	transport := Transport(encoded[18])
 	if transport != TransportTCP && transport != TransportUDP {
 		return UnknownMessage{}, ErrInvalidQuarantineEntry
 	}
-	payload := append([]byte(nil), encoded[30:30+payloadLength]...)
+
+	// Validate CRC, for this the CRC field must be set to zero before computing the checksum
+	binaryData.WriteUint32At(0, 6)
+	if crc32.ChecksumIEEE(encoded) != wantedCRC {
+		return UnknownMessage{}, fmt.Errorf("quarantine checksum: %w", ErrInvalidQuarantineEntry)
+	}
+
+	payload := binaryData.ReadBytes(int(payloadLength))
+
 	header := MessageHeader{
 		Magic:         MessageMagic,
-		Type:          MessageType(binary.LittleEndian.Uint16(encoded[20:22])),
+		Type:          headerType,
 		PayloadLength: uint16(payloadLength),
+		MAC:           mac,
 		Checksum:      crc32.ChecksumIEEE(payload),
 	}
-	copy(header.MAC[:], encoded[22:28])
 	message, err := DecodeMessage(header, payload)
 	if err != nil {
 		return UnknownMessage{}, fmt.Errorf("decode quarantined message: %w", err)
 	}
-	return UnknownMessage{Timestamp: int64(binary.LittleEndian.Uint64(encoded[10:18])), Transport: transport, Message: message}, nil
+	return UnknownMessage{Timestamp: int64(timeStamp), Transport: transport, Message: message}, nil
 }
 
 type quarantineSegment struct {
@@ -328,7 +351,7 @@ func readQuarantineEntries(fileSystem FileSystem, path string) ([]UnknownMessage
 	}
 	entries := make([]UnknownMessage, 0)
 	for offset := 0; offset < len(data); {
-		length := int(binary.LittleEndian.Uint32(data[offset+6 : offset+10]))
+		length := int(binary.LittleEndian.Uint32(data[offset+10 : offset+14]))
 		entry, err := decodeQuarantineEntry(data[offset : offset+length])
 		if err != nil {
 			return nil, fmt.Errorf("decode quarantine entry at %d: %w", offset, err)
@@ -342,14 +365,14 @@ func readQuarantineEntries(fileSystem FileSystem, path string) ([]UnknownMessage
 func scanQuarantineEntries(data []byte) (int, error) {
 	for offset := 0; offset < len(data); {
 		remaining := len(data) - offset
-		if remaining < quarantineHeaderSize {
+		if remaining < cQuarantineHeaderSize {
 			return offset, nil
 		}
-		if binary.LittleEndian.Uint32(data[offset:offset+4]) != quarantineMagic {
+		if binary.LittleEndian.Uint32(data[offset:offset+4]) != cQuarantineMagic {
 			return 0, ErrInvalidQuarantineEntry
 		}
-		length := int(binary.LittleEndian.Uint32(data[offset+6 : offset+10]))
-		if length < quarantineEntryMinimum || length > quarantineEntryMinimum+MaximumPayloadSize {
+		length := int(binary.LittleEndian.Uint32(data[offset+10 : offset+14]))
+		if length < cQuarantineEntryMinimum || length > cQuarantineEntryMinimum+MaximumPayloadSize {
 			return 0, ErrInvalidQuarantineEntry
 		}
 		if length > remaining {

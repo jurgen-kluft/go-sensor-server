@@ -2,7 +2,6 @@ package sensorserver
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"net"
 	"sync"
@@ -161,8 +160,11 @@ func newPipeTCPServer(t *testing.T) (*TCPServer, *recordingMessageHandler) {
 func encodedSensorMessage(t *testing.T, mac MACAddress, value int16) []byte {
 	t.Helper()
 	payload := make([]byte, SensorRecordSize)
-	binary.LittleEndian.PutUint16(payload[0:2], 1)
-	binary.LittleEndian.PutUint16(payload[2:4], uint16(value))
+	encodedValue := int32(value)
+	payload[0] = 1
+	payload[1] = byte(encodedValue)
+	payload[2] = byte(encodedValue >> 8)
+	payload[3] = byte(encodedValue >> 16)
 	encoded, err := EncodeMessage(MessageTypeSensorData, mac, payload)
 	if err != nil {
 		t.Fatalf("EncodeMessage() error = %v", err)

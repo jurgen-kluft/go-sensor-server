@@ -8,13 +8,12 @@ import (
 )
 
 func TestMonitoringStateKeepsBoundedHistoryAndClearsThreshold(t *testing.T) {
-	maximum := int16(100)
-	state, err := NewMonitoringState(Config{Address: ":8080", HistoryCapacity: 2, Thresholds: []Threshold{{SensorType: sensorserver.SENSOR_ID_TEMPERATURE, Maximum: &maximum}}})
+	state, err := NewMonitoringState(Config{Address: ":8080", HistoryCapacity: 2})
 	if err != nil {
 		t.Fatalf("NewMonitoringState() error = %v", err)
 	}
 	mac := sensorserver.MACAddress{2, 0, 0, 0xab, 0xcd, 0xef}
-	for index, value := range []int16{90, 110, 95} {
+	for index, value := range []int32{90, 110, 95} {
 		state.OnSensorObservation(sensorserver.SensorObservation{
 			MAC: mac, Area: sensorserver.Area1stLivingRoom, Transport: sensorserver.TransportUDP,
 			SensorType: sensorserver.SENSOR_ID_TEMPERATURE, UnitType: sensorserver.UCelcius,

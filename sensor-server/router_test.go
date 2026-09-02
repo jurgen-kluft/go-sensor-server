@@ -145,14 +145,14 @@ type dataWrite struct {
 	area       AreaType
 	sensorType SensorType
 	timestamp  int64
-	value      int16
+	value      int32
 }
 
 type recordingDataWriter struct {
 	writes []dataWrite
 }
 
-func (writer *recordingDataWriter) WriteSensorData(_ context.Context, area AreaType, sensorType SensorType, timestamp int64, value int16) error {
+func (writer *recordingDataWriter) WriteSensorData(_ context.Context, area AreaType, sensorType SensorType, timestamp int64, value int32) error {
 	writer.writes = append(writer.writes, dataWrite{area: area, sensorType: sensorType, timestamp: timestamp, value: value})
 	return nil
 }

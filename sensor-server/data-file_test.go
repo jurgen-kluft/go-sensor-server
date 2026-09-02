@@ -25,7 +25,7 @@ func TestDataFileEncodesRecordsLittleEndian(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
-	want := []byte{0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0xfe, 0xff}
+	want := []byte{0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0xfe, 0xff, 0xff, 0xff}
 	if string(encoded) != string(want) {
 		t.Fatalf("encoded record = %x, want %x", encoded, want)
 	}
@@ -40,7 +40,7 @@ func TestDataFileRotatesBeforeExceedingLimit(t *testing.T) {
 		t.Fatalf("OpenDataFile() error = %v", err)
 	}
 	for index := int64(1); index <= 3; index++ {
-		if err := dataFile.WriteRecord(index, int16(index)); err != nil {
+		if err := dataFile.WriteRecord(index, int32(index)); err != nil {
 			t.Fatalf("WriteRecord(%d) error = %v", index, err)
 		}
 	}

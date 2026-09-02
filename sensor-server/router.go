@@ -47,7 +47,7 @@ func (registry *ConfigRegistry) Reload(candidate *ConfigSnapshot) error {
 }
 
 type SensorDataWriter interface {
-	WriteSensorData(ctx context.Context, area AreaType, sensorType SensorType, timestamp int64, value int16) error
+	WriteSensorData(ctx context.Context, area AreaType, sensorType SensorType, timestamp int64, value int32) error
 }
 
 type UnknownMessage struct {
@@ -67,7 +67,7 @@ type SensorObservation struct {
 	SensorType SensorType
 	UnitType   UnitType
 	Timestamp  int64
-	Value      int16
+	Value      int32
 }
 
 type RouterCounters struct {
@@ -141,10 +141,9 @@ func (router *MessageRouter) Route(ctx context.Context, transport Transport, tim
 			continue
 		}
 		if router.onSensorObservation != nil {
-			sensorUnit := UnitForSensorType(sensor.Type)
 			router.onSensorObservation(SensorObservation{
 				MAC: message.Header.MAC, Area: device.Area, Transport: transport,
-				SensorType: record.SensorType, UnitType: sensorUnit,
+				SensorType: record.SensorType, UnitType: sensor.Unit,
 				Timestamp: timestamp, Value: record.Value,
 			})
 		}

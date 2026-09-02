@@ -77,16 +77,16 @@ func TestServerRoutesTCPAndUDPAndDrainsOnShutdown(t *testing.T) {
 	if len(counters.DataStreams) != 1 || counters.DataStreams[0].Counters.Written != 2 || counters.DataStreams[0].Counters.BytesWritten != 2*uint64(SensorDataRecordSize) {
 		t.Fatalf("data stream counters = %+v", counters.DataStreams)
 	}
-	data, err := os.ReadFile(filepath.Join(directory, "data", "LivingRoom", "Temperature", "00000001.dat"))
+	data, err := os.ReadFile(filepath.Join(directory, "data", "317374204c6976696e6720526f6f6d", "54656d7065726174757265", "00000001.dat"))
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 	if int64(len(data)) != 2*SensorDataRecordSize {
 		t.Fatalf("data size = %d, want %d", len(data), 2*SensorDataRecordSize)
 	}
-	values := []int16{
-		int16(binary.LittleEndian.Uint16(data[8:10])),
-		int16(binary.LittleEndian.Uint16(data[18:20])),
+	values := []int32{
+		int32(binary.LittleEndian.Uint32(data[8:12])),
+		int32(binary.LittleEndian.Uint32(data[20:24])),
 	}
 	sort.Slice(values, func(left, right int) bool { return values[left] < values[right] })
 	if values[0] != 21 || values[1] != 22 {
@@ -231,8 +231,11 @@ func serverTestMessage(t *testing.T, value int16) []byte {
 
 func encodeServerTestMessage(value int16) ([]byte, error) {
 	payload := make([]byte, SensorRecordSize)
-	binary.LittleEndian.PutUint16(payload[0:2], 1)
-	binary.LittleEndian.PutUint16(payload[2:4], uint16(value))
+	encodedValue := int32(value)
+	payload[0] = 1
+	payload[1] = byte(encodedValue)
+	payload[2] = byte(encodedValue >> 8)
+	payload[3] = byte(encodedValue >> 16)
 	return EncodeMessage(MessageTypeSensorData, MACAddress{0x02, 0x00, 0x00, 0xab, 0xcd, 0xef}, payload)
 }
 

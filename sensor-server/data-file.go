@@ -87,7 +87,7 @@ func OpenDataFile(fileSystem FileSystem, options DataFileOptions) (*DataFile, er
 	return dataFile, nil
 }
 
-func (dataFile *DataFile) WriteRecord(timestamp int64, value int16) error {
+func (dataFile *DataFile) WriteRecord(timestamp int64, value int32) error {
 	if dataFile.closed {
 		return ErrDataFileClosed
 	}
@@ -99,7 +99,7 @@ func (dataFile *DataFile) WriteRecord(timestamp int64, value int16) error {
 
 	var encoded [SensorDataRecordSize]byte
 	binary.LittleEndian.PutUint64(encoded[0:8], uint64(timestamp))
-	binary.LittleEndian.PutUint16(encoded[8:10], uint16(value))
+	binary.LittleEndian.PutUint32(encoded[8:12], uint32(value))
 	if _, err := dataFile.buffer.Write(encoded[:]); err != nil {
 		return fmt.Errorf("write data segment %q: %w", dataFile.segmentPath(), err)
 	}

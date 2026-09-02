@@ -16,7 +16,7 @@ func TestConfigPollerPublishesDeviceChange(t *testing.T) {
 		t.Fatalf("NewConfigPoller() error = %v", err)
 	}
 
-	updated := strings.Replace(validConfigJSON, "LivingRoom", "Kitchen", 1) + "\n"
+	updated := strings.Replace(validConfigJSON, "1st Living Room", "1st Kitchen", 1) + "\n"
 	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -27,7 +27,7 @@ func TestConfigPollerPublishesDeviceChange(t *testing.T) {
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, _ := registry.Snapshot().Device(mac)
 	if device.Area != Area1stKitchen {
-		t.Fatalf("device area = %q, want Area 1st floor kitchen", device.Area)
+		t.Fatalf("device area = %q, want 1st Kitchen", device.Area)
 	}
 }
 

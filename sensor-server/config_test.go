@@ -12,8 +12,8 @@ const validConfigJSON = `{
   "udp_address": ":9001",
   "data_root": "/tmp/sensors",
   "quarantine_root": "/tmp/quarantine",
-  "devices": [{"mac":"02:00:00:ab:cd:ef","area":"LivingRoom"}],
-  "sensors": [{"id":1,"type":"Temperature","unit":"Celsius"}],
+  "devices": [{"mac":"02:00:00:ab:cd:ef","area":"1st Living Room"}],
+	"sensors": [{"id":1,"type":"Temperature","unit":"Celsius"}],
   "data_stream": {},
   "network": {},
   "logging": {}
@@ -56,7 +56,7 @@ func TestConfigSnapshotDoesNotExposeMutableSlices(t *testing.T) {
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, _ := snapshot.Device(mac)
 	if device.Area != Area1stLivingRoom {
-		t.Fatalf("snapshot device area = %q, want LivingRoom", device.Area)
+		t.Fatalf("snapshot device area = %q, want 1st Living Room", device.Area)
 	}
 }
 
@@ -67,9 +67,8 @@ func TestLoadConfigRejectsInvalidInput(t *testing.T) {
 		new  string
 	}{
 		{name: "unknown field", old: `"logging": {}`, new: `"unknown": true, "logging": {}`},
-		{name: "duplicate MAC", old: `"devices": [`, new: `"devices": [{"mac":"02:00:00:ab:cd:ef","area":"Kitchen"},`},
-		{name: "duplicate sensor ID", old: `"sensors": [`, new: `"sensors": [{"id":1,"type":"Humidity","unit":"%"},`},
-		{name: "unsafe area", old: `"area":"LivingRoom"`, new: `"area":"../LivingRoom"`},
+		{name: "duplicate MAC", old: `"devices": [`, new: `"devices": [{"mac":"02:00:00:ab:cd:ef","area":"1st Kitchen"},`},
+		{name: "unknown area", old: `"area":"1st Living Room"`, new: `"area":"Unknown Room"`},
 		{name: "invalid port", old: `":9000"`, new: `":0"`},
 	}
 
@@ -88,7 +87,7 @@ func TestValidateReloadAllowsOnlyDeviceChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig(current) error = %v", err)
 	}
-	changedDeviceJSON := strings.Replace(validConfigJSON, "LivingRoom", "Kitchen", 1)
+	changedDeviceJSON := strings.Replace(validConfigJSON, "1st Living Room", "1st Kitchen", 1)
 	changedDevice, err := LoadConfig(strings.NewReader(changedDeviceJSON))
 	if err != nil {
 		t.Fatalf("LoadConfig(device change) error = %v", err)

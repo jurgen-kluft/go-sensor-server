@@ -42,8 +42,8 @@ type MessageHeader struct {
 }
 
 type SensorRecord struct {
-	SensorType SensorType
-	Value      int16
+	SensorType SensorType // byte
+	Value      int32      // [3]byte
 }
 
 type Message struct {
@@ -58,13 +58,21 @@ func DecodeHeader(data []byte) (MessageHeader, error) {
 		return MessageHeader{}, fmt.Errorf("decode header: got %d bytes, want %d: %w", len(data), MessageHeaderSize, io.ErrUnexpectedEOF)
 	}
 
+	binaryData := BinaryData{buf: data, off: 0}
+
+	hdrMagic := binaryData.ReadUint16()
+	hdrType := MessageType(binaryData.ReadUint16())
+	payloadLength := binaryData.ReadUint16()
+	mac := binaryData.ReadMAC()
+	checksum := binaryData.ReadUint32()
+
 	header := MessageHeader{
-		Magic:         binary.LittleEndian.Uint16(data[0:2]),
-		Type:          MessageType(binary.LittleEndian.Uint16(data[2:4])),
-		PayloadLength: binary.LittleEndian.Uint16(data[4:6]),
-		Checksum:      binary.LittleEndian.Uint32(data[12:16]),
+		Magic:         hdrMagic,
+		Type:          hdrType,
+		PayloadLength: payloadLength,
+		MAC:           mac,
+		Checksum:      checksum,
 	}
-	copy(header.MAC[:], data[6:12])
 
 	if header.Magic != MessageMagic {
 		return MessageHeader{}, fmt.Errorf("decode header: got 0x%04X: %w", header.Magic, ErrInvalidMagic)
@@ -95,11 +103,14 @@ func DecodeMessage(header MessageHeader, payload []byte) (Message, error) {
 		Payload: append([]byte(nil), payload...),
 		Sensors: make([]SensorRecord, 0, len(payload)/SensorRecordSize),
 	}
-	for offset := 0; offset < len(payload); offset += SensorRecordSize {
-		sensorTypeValue := binary.LittleEndian.Uint16(payload[offset : offset+2])
+
+	binaryData := BinaryData{buf: payload, off: 0}
+	numberOfRecords := int(header.PayloadLength) / SensorRecordSize
+	for i := 0; i < numberOfRecords; i += 1 {
+		sensorTypeValue := uint16(binaryData.ReadUint8())
 		message.Sensors = append(message.Sensors, SensorRecord{
 			SensorType: ToSensorType(sensorTypeValue),
-			Value:      int16(binary.LittleEndian.Uint16(payload[offset+2 : offset+4])),
+			Value:      binaryData.ReadInt24(),
 		})
 	}
 
@@ -156,8 +167,8 @@ func EncodeMessage(messageType MessageType, mac MACAddress, payload []byte) ([]b
 	binary.LittleEndian.PutUint16(headerBytes[0:2], MessageMagic)
 	binary.LittleEndian.PutUint16(headerBytes[2:4], uint16(messageType))
 	binary.LittleEndian.PutUint16(headerBytes[4:6], uint16(len(payload)))
-	binary.LittleEndian.PutUint32(headerBytes[6:10], crc32.ChecksumIEEE(payload))
-	copy(headerBytes[10:16], mac[:])
+	copy(headerBytes[6:12], mac[:])
+	binary.LittleEndian.PutUint32(headerBytes[12:16], crc32.ChecksumIEEE(payload))
 
 	if _, err := DecodeHeader(headerBytes); err != nil {
 		return nil, err

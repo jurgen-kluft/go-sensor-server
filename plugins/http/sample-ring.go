@@ -2,7 +2,7 @@ package httpplugin
 
 type Sample struct {
 	Timestamp int64 `json:"timestamp_us"`
-	Value     int16 `json:"value"`
+	Value     int32 `json:"value"`
 }
 
 type sampleRing struct {

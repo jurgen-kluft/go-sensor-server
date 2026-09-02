@@ -87,7 +87,7 @@ func (server *Server) Shutdown(ctx context.Context) error {
 
 func newHandler(serverContext context.Context, core CoreServer, state *MonitoringState) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("/health", func(writer http.ResponseWriter, request *http.Request) {
 		status := buildStatus(core)
 		code := http.StatusOK
 		if status.Status != "healthy" {
@@ -98,17 +98,22 @@ func newHandler(serverContext context.Context, core CoreServer, state *Monitorin
 			Issues []string `json:"issues"`
 		}{Status: status.Status, Issues: status.Issues})
 	})
-	mux.HandleFunc("GET /api/v1/status", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("/api/v1/status", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, buildStatus(core))
 	})
-	mux.HandleFunc("GET /api/v1/events", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("/api/v1/events", func(writer http.ResponseWriter, request *http.Request) {
 		handleEvents(serverContext, core, state, writer, request)
 	})
-	mux.HandleFunc("GET /api/v1/rooms", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("/api/v1/rooms", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, state.Rooms(core.Registry().Snapshot()))
 	})
-	mux.HandleFunc("GET /api/v1/rooms/{room}/devices", func(writer http.ResponseWriter, request *http.Request) {
-		room := request.PathValue("room")
+	mux.HandleFunc("/api/v1/rooms/", func(writer http.ResponseWriter, request *http.Request) {
+		parts := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
+		if len(parts) != 5 || parts[4] != "devices" {
+			http.NotFound(writer, request)
+			return
+		}
+		room := parts[3]
 		devices := state.Devices(core.Registry().Snapshot())
 		filtered := make([]DeviceSnapshot, 0)
 		for _, device := range devices {
@@ -122,26 +127,28 @@ func newHandler(serverContext context.Context, core CoreServer, state *Monitorin
 		}
 		writeJSON(writer, http.StatusOK, filtered)
 	})
-	mux.HandleFunc("GET /api/v1/devices/{mac}", func(writer http.ResponseWriter, request *http.Request) {
-		mac, err := sensorserver.ParseMACAddress(request.PathValue("mac"))
+	mux.HandleFunc("/api/v1/devices/", func(writer http.ResponseWriter, request *http.Request) {
+		parts := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
+		if len(parts) != 4 && (len(parts) != 7 || parts[4] != "sensors" || parts[6] != "readings") {
+			http.NotFound(writer, request)
+			return
+		}
+		mac, err := sensorserver.ParseMACAddress(parts[3])
 		if err != nil {
 			writeError(writer, http.StatusBadRequest, "invalid MAC address")
 			return
 		}
-		device, exists := state.Device(core.Registry().Snapshot(), mac)
-		if !exists {
-			writeError(writer, http.StatusNotFound, "device not found")
+		if len(parts) == 4 {
+			device, exists := state.Device(core.Registry().Snapshot(), mac)
+			if !exists {
+				writeError(writer, http.StatusNotFound, "device not found")
+				return
+			}
+			writeJSON(writer, http.StatusOK, device)
 			return
 		}
-		writeJSON(writer, http.StatusOK, device)
-	})
-	mux.HandleFunc("GET /api/v1/devices/{mac}/sensors/{sensorID}/readings", func(writer http.ResponseWriter, request *http.Request) {
-		mac, err := sensorserver.ParseMACAddress(request.PathValue("mac"))
-		if err != nil {
-			writeError(writer, http.StatusBadRequest, "invalid MAC address")
-			return
-		}
-		sensorID, err := strconv.ParseUint(request.PathValue("sensorID"), 10, 16)
+		sensorIDText := parts[5]
+		sensorID, err := strconv.ParseUint(sensorIDText, 10, 16)
 		if err != nil || sensorID == 0 {
 			writeError(writer, http.StatusBadRequest, "invalid sensor ID")
 			return

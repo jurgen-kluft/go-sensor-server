@@ -49,6 +49,12 @@ type DeviceConfig struct {
 	Area string `json:"area"`
 }
 
+type SensorConfig struct {
+	ID   SensorType `json:"id"`
+	Type string     `json:"type"`
+	Unit string     `json:"unit"`
+}
+
 type DataStreamConfig struct {
 	QueueCapacity   int      `json:"queue_capacity"`
 	EnqueueWait     Duration `json:"enqueue_wait"`
@@ -76,6 +82,7 @@ type Config struct {
 	DataRoot         string           `json:"data_root"`
 	QuarantineRoot   string           `json:"quarantine_root"`
 	Devices          []DeviceConfig   `json:"devices"`
+	Sensors          []SensorConfig   `json:"sensors"`
 	DataStream       DataStreamConfig `json:"data_stream"`
 	Network          NetworkConfig    `json:"network"`
 	Logging          LoggingConfig    `json:"logging"`
@@ -129,10 +136,17 @@ func NewConfigSnapshot(config Config) (*ConfigSnapshot, error) {
 		areaType := AreaTypeFromString(configured.Area)
 		snapshot.devices[mac] = Device{MAC: mac, Area: areaType}
 	}
-	for sensorType, _ := range SensorTypeNames {
-		snapshot.sensors[sensorType] = SensorDefinition{
-			Type: sensorType,
-			Unit: UnitForSensorType(sensorType),
+	for _, configured := range config.Sensors {
+		unit := UUnknown
+		for unitType, unitName := range UnitTypeToString {
+			if unitName == configured.Unit {
+				unit = unitType
+				break
+			}
+		}
+		snapshot.sensors[configured.ID] = SensorDefinition{
+			Type: configured.ID,
+			Unit: unit,
 		}
 	}
 	return snapshot, nil
@@ -255,22 +269,35 @@ func validateConfig(config Config) error {
 		if err := validateName(device.Area); err != nil {
 			return invalidConfig("devices[%d].area: %v", index, err)
 		}
+		if AreaTypeFromString(device.Area) == AreaUnknown {
+			return invalidConfig("devices[%d].area %q: unknown area", index, device.Area)
+		}
 	}
 
-	sensors := make(map[SensorType]struct{}, len(SensorTypeNames))
-	for sensorType, sensorTypeName := range SensorTypeNames {
-		if sensorType == 0 {
-			continue // Skip the reserved sensor type 0
+	sensors := make(map[SensorType]struct{}, len(config.Sensors))
+	for index, sensor := range config.Sensors {
+		if sensor.ID == SENSOR_ID_UNKNOWN {
+			return invalidConfig("sensors[%d].id: reserved sensor ID %d", index, sensor.ID)
 		}
-		if _, exists := sensors[sensorType]; exists {
-			return invalidConfig("sensors[%d].id: duplicate ID %d", sensorType, sensorType)
+		if _, exists := SensorTypeNames[sensor.ID]; !exists {
+			return invalidConfig("sensors[%d].id: unknown sensor ID %d", index, sensor.ID)
 		}
-		sensors[sensorType] = struct{}{}
-		if err := validateName(sensorTypeName); err != nil {
-			return invalidConfig("sensors[%d].type: %v", sensorType, err)
+		if _, exists := sensors[sensor.ID]; exists {
+			return invalidConfig("sensors[%d].id: duplicate ID %d", index, sensor.ID)
 		}
-		if strings.TrimSpace(UnitForSensorType(sensorType).String()) == "" {
-			return invalidConfig("sensors[%d].unit: empty", sensorType)
+		sensors[sensor.ID] = struct{}{}
+		if sensor.Type != SensorTypeNames[sensor.ID] {
+			return invalidConfig("sensors[%d].type %q does not match sensor ID %d", index, sensor.Type, sensor.ID)
+		}
+		unitKnown := false
+		for _, unitName := range UnitTypeToString {
+			if unitName == sensor.Unit {
+				unitKnown = true
+				break
+			}
+		}
+		if !unitKnown {
+			return invalidConfig("sensors[%d].unit %q is unknown", index, sensor.Unit)
 		}
 	}
 
@@ -313,7 +340,7 @@ func validateConfig(config Config) error {
 	return nil
 }
 
-const SensorDataRecordSize int64 = 10
+const SensorDataRecordSize int64 = 12
 
 func ensureJSONEnd(decoder *json.Decoder) error {
 	var extra any

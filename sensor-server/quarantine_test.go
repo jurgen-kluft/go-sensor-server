@@ -2,7 +2,6 @@ package sensorserver
 
 import (
 	"context"
-	"encoding/binary"
 	"os"
 	"path/filepath"
 	"testing"
@@ -168,8 +167,11 @@ func TestQuarantineWriterRotates(t *testing.T) {
 func quarantineTestMessage(t *testing.T, mac MACAddress, value int16, transport Transport) UnknownMessage {
 	t.Helper()
 	payload := make([]byte, SensorRecordSize)
-	binary.LittleEndian.PutUint16(payload[0:2], 1)
-	binary.LittleEndian.PutUint16(payload[2:4], uint16(value))
+	encodedValue := int32(value)
+	payload[0] = 1
+	payload[1] = byte(encodedValue)
+	payload[2] = byte(encodedValue >> 8)
+	payload[3] = byte(encodedValue >> 16)
 	encoded, err := EncodeMessage(MessageTypeSensorData, mac, payload)
 	if err != nil {
 		t.Fatalf("EncodeMessage() error = %v", err)

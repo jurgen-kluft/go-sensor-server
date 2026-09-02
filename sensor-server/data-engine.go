@@ -65,7 +65,7 @@ func NewFileDataStreamFactory(fileSystem FileSystem, clock Clock, dataRoot strin
 	}
 }
 
-func (engine *DataEngine) WriteSensorData(ctx context.Context, area AreaType, sensorType SensorType, timestamp int64, value int16) error {
+func (engine *DataEngine) WriteSensorData(ctx context.Context, area AreaType, sensorType SensorType, timestamp int64, value int32) error {
 	if engine.closed.Load() {
 		return ErrDataEngineClosed
 	}
