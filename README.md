@@ -35,10 +35,7 @@ accepted records, synchronizes storage, and logs a final counter snapshot.
 	"data_root": "./data",
 	"quarantine_root": "./quarantine",
 	"devices": [
-		{"mac": "02:00:00:ab:cd:ef", "area": "LivingRoom"}
-	],
-	"sensors": [
-		{"id": 1, "type": "Temperature", "unit": "Celsius"}
+		{"mac": "02:00:00:ab:cd:ef", "area": "1st Living Room"}
 	],
 	"data_stream": {},
 	"network": {},
@@ -66,15 +63,10 @@ Example HTTP configuration:
 {
 	"enabled": true,
 	"address": ":8080",
-	"history_capacity": 1000,
-	"thresholds": [
-		{"sensor_type": "Temperature", "minimum": -100, "maximum": 500}
-	]
+	"history_capacity": 1000
 }
 ```
 
-Threshold values use the raw signed 16-bit values sent by devices. Rules are
-optional, apply by sensor type, and are evaluated only when a reading arrives.
 Sensor inactivity does not create a warning.
 
 The plugin exposes these read-only endpoints:

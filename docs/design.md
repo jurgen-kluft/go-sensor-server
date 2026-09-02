@@ -355,7 +355,7 @@ Each file is append-only and contains fixed-size 12-byte records:
 | Offset | Size | Field | Encoding |
 |---:|---:|---|---|
 | 0 | 8 | Timestamp | Signed Unix microseconds, little-endian |
-| 8 | 4 | Sensor value | Signed integer, little-endian |
+| 8 | 4 | Sensor value | Signed 32-bit integer, little-endian |
 
 No Go struct may be serialized directly because compiler padding would change
 the format. Fields must be encoded explicitly.
