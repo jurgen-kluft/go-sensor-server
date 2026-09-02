@@ -1,0 +1,13 @@
+{
+	"tcp_address": ":9000",
+	"udp_address": ":9001",
+	"data_root": "./data",
+	"quarantine_root": "./quarantine",
+	"devices": [
+		{"mac": "02:00:00:ab:cd:ef", "area": "LivingRoom"}
+	],
+	"data_stream": {},
+	"network": {},
+	"logging": {"level": "info", "output": "stderr"},
+	"shutdown_deadline": "30s"
+}

@@ -15,14 +15,17 @@ const (
 )
 
 type ServerOptions struct {
-	FileSystem         FileSystem
-	Network            Network
-	Clock              Clock
-	ConfigPollInterval time.Duration
-	UDPWorkerCount     int
-	UDPQueueCapacity   int
-	OnWarning          func(error)
-	OnReload           func(*ConfigSnapshot)
+	FileSystem           FileSystem
+	Network              Network
+	Clock                Clock
+	ConfigPollInterval   time.Duration
+	UDPWorkerCount       int
+	UDPQueueCapacity     int
+	OnWarning            func(error)
+	OnReload             func(*ConfigSnapshot)
+	OnSensorObservation  func(SensorObservation)
+	OnDeviceConnected    func(connectionID uint64, mac MACAddress)
+	OnDeviceDisconnected func(connectionID uint64, mac MACAddress)
 }
 
 type Server struct {
@@ -94,6 +97,7 @@ func OpenServer(ctx context.Context, configPath string, options ServerOptions) (
 		cleanupStorage()
 		return nil, err
 	}
+	router.onSensorObservation = options.OnSensorObservation
 	tcpListener, err := options.Network.Listen("tcp", config.TCPAddress)
 	if err != nil {
 		cleanupStorage()
@@ -106,9 +110,11 @@ func OpenServer(ctx context.Context, configPath string, options ServerOptions) (
 		return nil, fmt.Errorf("listen UDP on %q: %w", config.UDPAddress, err)
 	}
 	tcp, err := NewTCPServer(tcpListener, router, options.Clock, TCPServerOptions{
-		MaximumConnections: config.Network.MaximumTCPConnections,
-		PayloadDeadline:    config.Network.PayloadDeadline.Value(),
-		OnWarning:          options.OnWarning,
+		MaximumConnections:   config.Network.MaximumTCPConnections,
+		PayloadDeadline:      config.Network.PayloadDeadline.Value(),
+		OnWarning:            options.OnWarning,
+		OnDeviceConnected:    options.OnDeviceConnected,
+		OnDeviceDisconnected: options.OnDeviceDisconnected,
 	})
 	if err != nil {
 		_ = udpConnection.Close()

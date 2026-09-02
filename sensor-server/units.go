@@ -1,0 +1,422 @@
+package sensorserver
+
+const ()
+
+/*
+   typedef u8 unit_type_t;
+
+   enum unit_type_e
+   {
+       // Temperature (0–2)
+       UTemperature = 0,
+	   UCelcius	    = 1,
+       UFahrenheit  = 2,
+       UKelvin      = 3,
+
+       // Pressure (6–9)
+       UPressure   = 6,
+       UBar        = 7,
+       UPascal     = 8,
+       UAtmosphere = 9,
+
+       // Humidity (13)
+       UHumidity = 13,
+
+       // Speed & Acceleration (17–21)
+       UVelocity          = 17,
+       UKilometersPerHour = 18,
+       UMilesPerHour      = 19,
+       UAcceleration      = 20,
+       UGForce            = 21,
+
+       // Concentration (25–26)
+       UPpm     = 25,
+       UPpb     = 26,
+       UPercent = 27,
+
+       // Mass (30–36)
+       UKilograms  = 30,
+       UGrams      = 31,
+       UMilligrams = 32,
+       UMicrograms = 33,
+       UTons       = 34,
+       UPounds     = 35,
+       UOunces     = 36,
+
+       // Length & Distance (40–46)
+       UKilometers  = 40,
+       UMeters      = 41,
+       UCentimeters = 42,
+       UMillimeters = 43,
+       UMiles       = 44,
+       UFeet        = 45,
+       UInches      = 46,
+
+       // Time (50–55)
+       UHours        = 50,
+       UMinutes      = 51,
+       USeconds      = 52,
+       UMilliseconds = 53,
+       UMicroseconds = 54,
+       UNanoseconds  = 55,
+
+       // Volume (59–62)
+       ULiters      = 59,
+       UMilliliters = 60,
+       UCubicMeters = 61,
+       UGallons     = 62,
+
+       // Energy & Power (66–71)
+       UJoules       = 66,
+       UKiloJoules   = 67,
+       UWatts        = 68,
+       UKiloWatts    = 69,
+       UMegaWatts    = 70,
+       UKiloWattHour = 71,
+
+       // Data Size (75–79)
+       UBytes     = 75,
+       UKiloBytes = 76,
+       UMegaBytes = 77,
+       UGigaBytes = 78,
+       UTeraBytes = 79,
+
+       // Electrical (83–89)
+       UVolt        = 83,
+       UMilliVolt   = 84,
+       UAmpere      = 85,
+       UMilliAmpere = 86,
+       UOhm         = 87,
+       UFarad       = 88,
+       UHenry       = 89,
+       UdBm         = 90,  // Decibel-milliwatts (signal strength)
+
+       // Frequency (93–96)
+       UHertz     = 93,
+       UKiloHertz = 94,
+       UMegaHertz = 95,
+       UGigaHertz = 96,
+
+       // Angle (100–101)
+       UDegrees = 100,
+       URadians = 101,
+
+       // Logical / State Units (105–115)
+       UOnOff               = 105,
+       UOpenClose           = 106,
+       UTrueFalse           = 107,
+       UActiveInactive      = 108,
+       UEnabledDisabled     = 109,
+       UStartStop           = 110,
+       UAlarmNormal         = 111,
+       UFaultNormal         = 112,
+       UPresentAbsent       = 113,
+       UDetectedNotDetected = 114,
+
+       // Sound
+       UDecibels = 116,
+
+       // Light
+       ULux     = 120,
+       UUvIndex = 121,
+
+       // mg/m3, ug/m3
+       Uugm3 = 125,
+       Umgm3 = 126,
+
+       // Data
+       UBinaryData = 150,
+       UMacAddress = 151,
+
+       // Unknown / Undefined
+       UUnknown
+   };
+
+*/
+
+type UnitType uint8
+
+const (
+	// Temperature (0–2)
+	UTemperature UnitType = 0
+	UCelcius     UnitType = 1
+	UFahrenheit  UnitType = 2
+	UKelvin      UnitType = 3
+
+	// Pressure (6–9)
+	UPressure   UnitType = 6
+	UBar        UnitType = 7
+	UPascal     UnitType = 8
+	UAtmosphere UnitType = 9
+
+	// Humidity (13)
+	UHumidity UnitType = 13
+
+	// Speed & Acceleration (17–21)
+	UVelocity          UnitType = 17
+	UKilometersPerHour UnitType = 18
+	UMilesPerHour      UnitType = 19
+	UAcceleration      UnitType = 20
+	UGForce            UnitType = 21
+
+	// Concentration (25–26)
+	UPpm     UnitType = 25
+	UPpb     UnitType = 26
+	UPercent UnitType = 27
+
+	// Mass (30–36)
+	UKilograms  UnitType = 30
+	UGrams      UnitType = 31
+	UMilligrams UnitType = 32
+	UMicrograms UnitType = 33
+	UTons       UnitType = 34
+	UPounds     UnitType = 35
+	UOunces     UnitType = 36
+
+	// Length & Distance (40–46)
+	UKilometers  UnitType = 40
+	UMeters      UnitType = 41
+	UCentimeters UnitType = 42
+	UMillimeters UnitType = 43
+	UMiles       UnitType = 44
+	UFeet        UnitType = 45
+	UInches      UnitType = 46
+
+	// Time (50–55)
+	UHours        UnitType = 50
+	UMinutes      UnitType = 51
+	USeconds      UnitType = 52
+	UMilliseconds UnitType = 53
+	UMicroseconds UnitType = 54
+	UNanoseconds  UnitType = 55
+
+	// Volume (59–62)
+	ULiters      UnitType = 59
+	UMilliliters UnitType = 60
+	UCubicMeters UnitType = 61
+	UGallons     UnitType = 62
+
+	// Energy & Power (66–71)
+	UJoules       UnitType = 66
+	UKiloJoules   UnitType = 67
+	UWatts        UnitType = 68
+	UKiloWatts    UnitType = 69
+	UMegaWatts    UnitType = 70
+	UKiloWattHour UnitType = 71
+
+	// Data Size (75–79)
+	UBytes     UnitType = 75
+	UKiloBytes UnitType = 76
+	UMegaBytes UnitType = 77
+	UGigaBytes UnitType = 78
+	UTeraBytes UnitType = 79
+
+	// Electrical (83–89)
+	UVolt        UnitType = 83
+	UMilliVolt   UnitType = 84
+	UAmpere      UnitType = 85
+	UMilliAmpere UnitType = 86
+	UOhm         UnitType = 87
+	UFarad       UnitType = 88
+	UHenry       UnitType = 89
+	UdBm         UnitType = 90 // Decibel-milliwatts (signal strength)
+
+	// Frequency (93–96)
+	UHertz     UnitType = 93
+	UKiloHertz UnitType = 94
+	UMegaHertz UnitType = 95
+	UGigaHertz UnitType = 96
+
+	// Angle (100–101)
+	UDegrees UnitType = 100
+	URadians UnitType = 101
+
+	// Logical / State Units (105–115)
+	UOnOff               UnitType = 105
+	UOpenClose           UnitType = 106
+	UTrueFalse           UnitType = 107
+	UActiveInactive      UnitType = 108
+	UEnabledDisabled     UnitType = 109
+	UStartStop           UnitType = 110
+	UAlarmNormal         UnitType = 111
+	UFaultNormal         UnitType = 112
+	UPresentAbsent       UnitType = 113
+	UDetectedNotDetected UnitType = 114
+
+	// Sound
+	UDecibels UnitType = 116
+
+	// Light
+	ULux     UnitType = 120
+	UUvIndex UnitType = 121
+
+	// mg/m3, ug/m3
+	Uugm3 UnitType = 125
+	Umgm3 UnitType = 126
+
+	// Data
+	UBinaryData UnitType = 150
+	UMacAddress UnitType = 151
+
+	UUnknown UnitType = 255
+)
+
+var SensorTypeUnits = map[SensorType]UnitType{
+	SENSOR_ID_UNKNOWN:     UUnknown,
+	SENSOR_ID_TEMPERATURE: UTemperature,
+	SENSOR_ID_HUMIDITY:    UHumidity,
+	SENSOR_ID_PRESSURE:    UPressure,
+	SENSOR_ID_LIGHT:       ULux,
+	SENSOR_ID_UV:          UUvIndex,
+	SENSOR_ID_CO:          UPpm,
+	SENSOR_ID_CO2:         UPpm,
+	SENSOR_ID_HCHO:        UPpm,
+	SENSOR_ID_VOC:         UPpm,
+	SENSOR_ID_NOX:         UPpm,
+	SENSOR_ID_PM005:       Uugm3,
+	SENSOR_ID_PM010:       Uugm3,
+	SENSOR_ID_PM025:       Uugm3,
+	SENSOR_ID_PM040:       Uugm3,
+	SENSOR_ID_PM100:       Uugm3,
+	SENSOR_ID_NOISE:       UDecibels,
+	SENSOR_ID_VIBRATION:   UHertz,
+	SENSOR_ID_STATE:       UOnOff,
+	SENSOR_ID_BATTERY:     UPercent,
+	SENSOR_ID_SWITCH1:     UOnOff,
+	SENSOR_ID_SWITCH2:     UOnOff,
+	SENSOR_ID_SWITCH3:     UOnOff,
+	SENSOR_ID_SWITCH4:     UOnOff,
+	SENSOR_ID_SWITCH5:     UOnOff,
+	SENSOR_ID_SWITCH6:     UOnOff,
+	SENSOR_ID_SWITCH7:     UOnOff,
+	SENSOR_ID_SWITCH8:     UOnOff,
+	SENSOR_ID_SWITCH9:     UOnOff,
+	SENSOR_ID_PRESENCE1:   UPresentAbsent,
+	SENSOR_ID_PRESENCE2:   UPresentAbsent,
+	SENSOR_ID_PRESENCE3:   UPresentAbsent,
+	SENSOR_ID_DISTANCE1:   UPresentAbsent,
+	SENSOR_ID_DISTANCE2:   UPresentAbsent,
+	SENSOR_ID_DISTANCE3:   UPresentAbsent,
+	SENSOR_ID_POS1_X:      UCentimeters,
+	SENSOR_ID_POS1_Y:      UCentimeters,
+	SENSOR_ID_POS1_Z:      UCentimeters,
+	SENSOR_ID_POS2_X:      UCentimeters,
+	SENSOR_ID_POS2_Y:      UCentimeters,
+	SENSOR_ID_POS2_Z:      UCentimeters,
+	SENSOR_ID_POS3_X:      UCentimeters,
+	SENSOR_ID_POS3_Y:      UCentimeters,
+	SENSOR_ID_POS3_Z:      UCentimeters,
+	SENSOR_ID_RSSI:        UdBm,
+	SENSOR_ID_PERF1:       UMicroseconds,
+	SENSOR_ID_PERF2:       UMicroseconds,
+	SENSOR_ID_PERF3:       UMicroseconds,
+	SENSOR_ID_VOLTAGE:     UVolt,
+	SENSOR_ID_CURRENT:     UAmpere,
+	SENSOR_ID_POWER:       UKiloWatts,
+	SENSOR_ID_ENERGY:      UKiloWattHour,
+	SENSOR_ID_JSON:        UBinaryData,
+	SENSOR_ID_IMAGE:       UBinaryData,
+	SENSOR_ID_GAS_M3:      UCubicMeters,
+	SENSOR_ID_WATER_M3:    UCubicMeters,
+	SENSOR_ID_kWAh:        UKiloWattHour,
+}
+
+func UnitForSensorType(sensorType SensorType) UnitType {
+	if unit, exists := SensorTypeUnits[sensorType]; exists {
+		return unit
+	}
+	return UUnknown
+}
+
+func (u UnitType) String() string {
+	if name, exists := UnitTypeToString[u]; exists {
+		return name
+	}
+	return "Unknown"
+}
+
+var UnitTypeToString = map[UnitType]string{
+	UTemperature:         "Temperature",
+	UCelcius:             "Celsius",
+	UFahrenheit:          "Fahrenheit",
+	UKelvin:              "Kelvin",
+	UPressure:            "Pressure",
+	UBar:                 "Bar",
+	UPascal:              "Pascal",
+	UAtmosphere:          "Atmosphere",
+	UHumidity:            "Humidity",
+	UVelocity:            "Velocity",
+	UKilometersPerHour:   "Kilometers per Hour",
+	UMilesPerHour:        "Miles per Hour",
+	UAcceleration:        "Acceleration",
+	UGForce:              "G-Force",
+	UPpm:                 "Parts per Million (PPM)",
+	UPpb:                 "Parts per Billion (PPB)",
+	UPercent:             "Percent (%)",
+	UKilograms:           "Kilograms (kg)",
+	UGrams:               "Grams (g)",
+	UMilligrams:          "Milligrams (mg)",
+	UMicrograms:          "Micrograms (µg)",
+	UTons:                "Tons (t)",
+	UPounds:              "Pounds (lb)",
+	UOunces:              "Ounces (oz)",
+	UKilometers:          "Kilometers (km)",
+	UMeters:              "Meters (m)",
+	UCentimeters:         "Centimeters (cm)",
+	UMillimeters:         "Millimeters (mm)",
+	UMiles:               "Miles (mi)",
+	UFeet:                "Feet (ft)",
+	UInches:              "Inches (in)",
+	UHours:               "Hours (h)",
+	UMinutes:             "Minutes (min)",
+	USeconds:             "Seconds (s)",
+	UMilliseconds:        "Milliseconds (ms)",
+	UMicroseconds:        "Microseconds (µs)",
+	UNanoseconds:         "Nanoseconds (ns)",
+	ULiters:              "Liters (L)",
+	UMilliliters:         "Milliliters (mL)",
+	UCubicMeters:         "Cubic Meters (m³)",
+	UGallons:             "Gallons (gal)",
+	UJoules:              "Joules (J)",
+	UKiloJoules:          "Kilojoules (kJ)",
+	UWatts:               "Watts (W)",
+	UKiloWatts:           "Kilowatts (kW)",
+	UMegaWatts:           "Megawatts (MW)",
+	UKiloWattHour:        "Kilowatt-hour (kWh)",
+	UBytes:               "Bytes (B)",
+	UKiloBytes:           "Kilobytes (KB)",
+	UMegaBytes:           "Megabytes (MB)",
+	UGigaBytes:           "Gigabytes (GB)",
+	UTeraBytes:           "Terabytes (TB)",
+	UVolt:                "Volts (V)",
+	UMilliVolt:           "Millivolts (mV)",
+	UAmpere:              "Amperes (A)",
+	UMilliAmpere:         "Milliamperes (mA)",
+	UOhm:                 "Ohms (Ω)",
+	UFarad:               "Farads (F)",
+	UHenry:               "Henrys (H)",
+	UdBm:                 "Decibel-milliwatts (dBm)",
+	UHertz:               "Hertz (Hz)",
+	UKiloHertz:           "Kilohertz (kHz)",
+	UMegaHertz:           "Megahertz (MHz)",
+	UGigaHertz:           "Gigahertz (GHz)",
+	UDegrees:             "Degrees (°)",
+	URadians:             "Radians (rad)",
+	UOnOff:               "On/Off",
+	UOpenClose:           "Open/Close",
+	UTrueFalse:           "True/False",
+	UActiveInactive:      "Active/Inactive",
+	UEnabledDisabled:     "Enabled/Disabled",
+	UStartStop:           "Start/Stop",
+	UAlarmNormal:         "Alarm/Normal",
+	UFaultNormal:         "Fault/Normal",
+	UPresentAbsent:       "Present/Absent",
+	UDetectedNotDetected: "Detected/Not Detected",
+	UDecibels:            "Decibels (dB)",
+	ULux:                 "Lux (lx)",
+	UUvIndex:             "UV Index",
+	Uugm3:                "Micrograms per Cubic Meter (µg/m³)",
+	Umgm3:                "Milligrams per Cubic Meter (mg/m³)",
+	UBinaryData:          "Binary Data",
+	UMacAddress:          "MAC Address",
+}

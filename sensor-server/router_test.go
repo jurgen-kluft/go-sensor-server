@@ -10,7 +10,7 @@ import (
 
 func TestMessageRouterRoutesKnownDeviceRecords(t *testing.T) {
 	router, dataWriter, _ := newTestRouter(t)
-	message := testRoutedMessage(MACAddress{0x02, 0, 0, 0xab, 0xcd, 0xef}, []SensorRecord{{ID: 1, Value: 215}})
+	message := testRoutedMessage(MACAddress{0x02, 0, 0, 0xab, 0xcd, 0xef}, []SensorRecord{{SensorType: SENSOR_ID_TEMPERATURE, Value: 215}})
 
 	if err := router.Route(context.Background(), TransportTCP, 1234, message); err != nil {
 		t.Fatalf("Route() error = %v", err)
@@ -19,14 +19,38 @@ func TestMessageRouterRoutesKnownDeviceRecords(t *testing.T) {
 		t.Fatalf("writes = %d, want 1", len(dataWriter.writes))
 	}
 	write := dataWriter.writes[0]
-	if write.area != "LivingRoom" || write.sensorType != "Temperature" || write.timestamp != 1234 || write.value != 215 {
+	if write.area != Area1stLivingRoom || write.sensorType != SENSOR_ID_TEMPERATURE || write.timestamp != 1234 || write.value != 215 {
 		t.Fatalf("write = %+v", write)
+	}
+}
+
+func TestMessageRouterObservesOnlyKnownDeviceAndSensorRecords(t *testing.T) {
+	router, _, _ := newTestRouter(t)
+	var observations []SensorObservation
+	router.onSensorObservation = func(observation SensorObservation) {
+		observations = append(observations, observation)
+	}
+	mac := MACAddress{0x02, 0, 0, 0xab, 0xcd, 0xef}
+	message := testRoutedMessage(mac, []SensorRecord{{SensorType: SENSOR_ID_UNKNOWN, Value: 1}, {SensorType: SENSOR_ID_TEMPERATURE, Value: 215}})
+
+	_ = router.Route(context.Background(), TransportUDP, 1234, message)
+
+	if len(observations) != 1 {
+		t.Fatalf("observations = %d, want 1", len(observations))
+	}
+	want := SensorObservation{
+		MAC: mac, Area: Area1stLivingRoom, Transport: TransportUDP,
+		SensorType: SENSOR_ID_TEMPERATURE, UnitType: UCelcius,
+		Timestamp: 1234, Value: 215,
+	}
+	if observations[0] != want {
+		t.Fatalf("observation = %+v, want %+v", observations[0], want)
 	}
 }
 
 func TestMessageRouterQuarantinesUnknownDevice(t *testing.T) {
 	router, dataWriter, unknownWriter := newTestRouter(t)
-	message := testRoutedMessage(MACAddress{1, 2, 3, 4, 5, 6}, []SensorRecord{{ID: 1, Value: 2}})
+	message := testRoutedMessage(MACAddress{1, 2, 3, 4, 5, 6}, []SensorRecord{{SensorType: 1, Value: 2}})
 
 	err := router.Route(context.Background(), TransportUDP, 99, message)
 	if !errors.Is(err, ErrUnknownDevice) {
@@ -44,8 +68,8 @@ func TestMessageRouterQuarantinesUnknownDevice(t *testing.T) {
 func TestMessageRouterRejectsOnlyUnknownSensorRecord(t *testing.T) {
 	router, dataWriter, _ := newTestRouter(t)
 	message := testRoutedMessage(MACAddress{0x02, 0, 0, 0xab, 0xcd, 0xef}, []SensorRecord{
-		{ID: 999, Value: 1},
-		{ID: 1, Value: 2},
+		{SensorType: SENSOR_ID_ENERGY, Value: 1},
+		{SensorType: SENSOR_ID_TEMPERATURE, Value: 2},
 	})
 
 	err := router.Route(context.Background(), TransportTCP, 1, message)
@@ -77,7 +101,7 @@ func TestConfigRegistryReloadIsAtomicForReaders(t *testing.T) {
 		go func() {
 			defer waitGroup.Done()
 			device, ok := registry.Snapshot().Device(mac)
-			if !ok || (device.Area != "LivingRoom" && device.Area != "Kitchen") {
+			if !ok || (device.Area != Area1stLivingRoom && device.Area != Area1stKitchen) {
 				t.Errorf("Device() = %+v, %v", device, ok)
 			}
 		}()
@@ -118,8 +142,8 @@ func testRoutedMessage(mac MACAddress, sensors []SensorRecord) Message {
 }
 
 type dataWrite struct {
-	area       string
-	sensorType string
+	area       AreaType
+	sensorType SensorType
 	timestamp  int64
 	value      int16
 }
@@ -128,7 +152,7 @@ type recordingDataWriter struct {
 	writes []dataWrite
 }
 
-func (writer *recordingDataWriter) WriteSensorData(_ context.Context, area, sensorType string, timestamp int64, value int16) error {
+func (writer *recordingDataWriter) WriteSensorData(_ context.Context, area AreaType, sensorType SensorType, timestamp int64, value int16) error {
 	writer.writes = append(writer.writes, dataWrite{area: area, sensorType: sensorType, timestamp: timestamp, value: value})
 	return nil
 }

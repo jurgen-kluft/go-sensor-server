@@ -12,7 +12,7 @@ import (
 
 var ErrDataEngineClosed = errors.New("data engine is closed")
 
-type DataStreamFactory func(area, sensorType string) (*DataStream, error)
+type DataStreamFactory func(area AreaType, sensorType SensorType) (*DataStream, error)
 
 type DataEngine struct {
 	factory DataStreamFactory
@@ -22,13 +22,13 @@ type DataEngine struct {
 }
 
 type dataStreamKey struct {
-	area       string
-	sensorType string
+	area       AreaType
+	sensorType SensorType
 }
 
 type DataStreamSnapshot struct {
-	Area       string
-	SensorType string
+	Area       AreaType
+	SensorType SensorType
 	Counters   DataStreamCounters
 }
 
@@ -40,8 +40,8 @@ func NewDataEngine(factory DataStreamFactory) (*DataEngine, error) {
 }
 
 func NewFileDataStreamFactory(fileSystem FileSystem, clock Clock, dataRoot string, config DataStreamConfig, onError func(error)) DataStreamFactory {
-	return func(area, sensorType string) (*DataStream, error) {
-		fileOptions := DefaultDataFileOptions(filepath.Join(dataRoot, area, sensorType))
+	return func(area AreaType, sensorType SensorType) (*DataStream, error) {
+		fileOptions := DefaultDataFileOptions(filepath.Join(dataRoot, fmt.Sprintf("%04x", area), fmt.Sprintf("%04x", sensorType)))
 		fileOptions.BufferSize = config.WriteBufferSize
 		fileOptions.RotationSize = config.RotationSize
 		writer, err := OpenDataFile(fileSystem, fileOptions)
@@ -65,7 +65,7 @@ func NewFileDataStreamFactory(fileSystem FileSystem, clock Clock, dataRoot strin
 	}
 }
 
-func (engine *DataEngine) WriteSensorData(ctx context.Context, area, sensorType string, timestamp int64, value int16) error {
+func (engine *DataEngine) WriteSensorData(ctx context.Context, area AreaType, sensorType SensorType, timestamp int64, value int16) error {
 	if engine.closed.Load() {
 		return ErrDataEngineClosed
 	}
@@ -118,7 +118,7 @@ func (engine *DataEngine) Counters() []DataStreamSnapshot {
 	return snapshots
 }
 
-func (engine *DataEngine) stream(area, sensorType string) (*DataStream, error) {
+func (engine *DataEngine) stream(area AreaType, sensorType SensorType) (*DataStream, error) {
 	key := dataStreamKey{area: area, sensorType: sensorType}
 	engine.mu.Lock()
 	defer engine.mu.Unlock()

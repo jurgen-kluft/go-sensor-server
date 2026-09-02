@@ -37,11 +37,11 @@ func TestLoadConfigAppliesDefaultsAndBuildsLookups(t *testing.T) {
 
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, ok := snapshot.Device(mac)
-	if !ok || device.Area != "LivingRoom" {
+	if !ok || device.Area != Area1stLivingRoom {
 		t.Fatalf("Device() = %+v, %v", device, ok)
 	}
 	sensor, ok := snapshot.Sensor(1)
-	if !ok || sensor.Type != "Temperature" {
+	if !ok || sensor.Type != SENSOR_ID_TEMPERATURE {
 		t.Fatalf("Sensor() = %+v, %v", sensor, ok)
 	}
 }
@@ -55,7 +55,7 @@ func TestConfigSnapshotDoesNotExposeMutableSlices(t *testing.T) {
 	config.Devices[0].Area = "Changed"
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, _ := snapshot.Device(mac)
-	if device.Area != "LivingRoom" {
+	if device.Area != Area1stLivingRoom {
 		t.Fatalf("snapshot device area = %q, want LivingRoom", device.Area)
 	}
 }

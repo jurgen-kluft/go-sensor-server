@@ -204,7 +204,7 @@ func ReplayQuarantine(ctx context.Context, writer *QuarantineWriter, registry *C
 				continue
 			}
 			for _, record := range entry.Message.Sensors {
-				sensor, ok := snapshot.Sensor(record.ID)
+				sensor, ok := snapshot.Sensor(record.SensorType)
 				if !ok {
 					continue
 				}

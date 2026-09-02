@@ -49,12 +49,6 @@ type DeviceConfig struct {
 	Area string `json:"area"`
 }
 
-type SensorConfig struct {
-	ID   uint16 `json:"id"`
-	Type string `json:"type"`
-	Unit string `json:"unit"`
-}
-
 type DataStreamConfig struct {
 	QueueCapacity   int      `json:"queue_capacity"`
 	EnqueueWait     Duration `json:"enqueue_wait"`
@@ -82,7 +76,6 @@ type Config struct {
 	DataRoot         string           `json:"data_root"`
 	QuarantineRoot   string           `json:"quarantine_root"`
 	Devices          []DeviceConfig   `json:"devices"`
-	Sensors          []SensorConfig   `json:"sensors"`
 	DataStream       DataStreamConfig `json:"data_stream"`
 	Network          NetworkConfig    `json:"network"`
 	Logging          LoggingConfig    `json:"logging"`
@@ -91,19 +84,18 @@ type Config struct {
 
 type Device struct {
 	MAC  MACAddress
-	Area string
+	Area AreaType
 }
 
 type SensorDefinition struct {
-	ID   uint16
-	Type string
-	Unit string
+	Type SensorType
+	Unit UnitType
 }
 
 type ConfigSnapshot struct {
 	config  Config
 	devices map[MACAddress]Device
-	sensors map[uint16]SensorDefinition
+	sensors map[SensorType]SensorDefinition
 }
 
 func LoadConfig(reader io.Reader) (*ConfigSnapshot, error) {
@@ -130,14 +122,18 @@ func NewConfigSnapshot(config Config) (*ConfigSnapshot, error) {
 	snapshot := &ConfigSnapshot{
 		config:  cloneConfig(config),
 		devices: make(map[MACAddress]Device, len(config.Devices)),
-		sensors: make(map[uint16]SensorDefinition, len(config.Sensors)),
+		sensors: make(map[SensorType]SensorDefinition, len(SensorTypeNames)),
 	}
 	for _, configured := range config.Devices {
 		mac, _ := ParseMACAddress(configured.MAC)
-		snapshot.devices[mac] = Device{MAC: mac, Area: configured.Area}
+		areaType := AreaTypeFromString(configured.Area)
+		snapshot.devices[mac] = Device{MAC: mac, Area: areaType}
 	}
-	for _, configured := range config.Sensors {
-		snapshot.sensors[configured.ID] = SensorDefinition(configured)
+	for sensorType, _ := range SensorTypeNames {
+		snapshot.sensors[sensorType] = SensorDefinition{
+			Type: sensorType,
+			Unit: UnitForSensorType(sensorType),
+		}
 	}
 	return snapshot, nil
 }
@@ -151,7 +147,7 @@ func (snapshot *ConfigSnapshot) Device(mac MACAddress) (Device, bool) {
 	return device, ok
 }
 
-func (snapshot *ConfigSnapshot) Sensor(id uint16) (SensorDefinition, bool) {
+func (snapshot *ConfigSnapshot) Sensor(id SensorType) (SensorDefinition, bool) {
 	sensor, ok := snapshot.sensors[id]
 	return sensor, ok
 }
@@ -261,20 +257,20 @@ func validateConfig(config Config) error {
 		}
 	}
 
-	sensors := make(map[uint16]struct{}, len(config.Sensors))
-	for index, sensor := range config.Sensors {
-		if sensor.ID == 0 {
-			return invalidConfig("sensors[%d].id: zero is reserved", index)
+	sensors := make(map[SensorType]struct{}, len(SensorTypeNames))
+	for sensorType, sensorTypeName := range SensorTypeNames {
+		if sensorType == 0 {
+			continue // Skip the reserved sensor type 0
 		}
-		if _, exists := sensors[sensor.ID]; exists {
-			return invalidConfig("sensors[%d].id: duplicate ID %d", index, sensor.ID)
+		if _, exists := sensors[sensorType]; exists {
+			return invalidConfig("sensors[%d].id: duplicate ID %d", sensorType, sensorType)
 		}
-		sensors[sensor.ID] = struct{}{}
-		if err := validateName(sensor.Type); err != nil {
-			return invalidConfig("sensors[%d].type: %v", index, err)
+		sensors[sensorType] = struct{}{}
+		if err := validateName(sensorTypeName); err != nil {
+			return invalidConfig("sensors[%d].type: %v", sensorType, err)
 		}
-		if strings.TrimSpace(sensor.Unit) == "" {
-			return invalidConfig("sensors[%d].unit: empty", index)
+		if strings.TrimSpace(UnitForSensorType(sensorType).String()) == "" {
+			return invalidConfig("sensors[%d].unit: empty", sensorType)
 		}
 	}
 
@@ -374,7 +370,6 @@ func invalidConfig(format string, values ...any) error {
 
 func cloneConfig(config Config) Config {
 	config.Devices = append([]DeviceConfig(nil), config.Devices...)
-	config.Sensors = append([]SensorConfig(nil), config.Sensors...)
 	return config
 }
 

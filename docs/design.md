@@ -26,6 +26,38 @@ wire.
 Multiple devices in one area may report the same sensor type. Their readings
 are intentionally consolidated into the same data stream and file sequence.
 
+An optional monitoring plugin exists under `plugins/http`. Dependency flows
+from that plugin to the core server package. The executable is the composition
+root; the core server neither imports nor manages HTTP.
+
+### 2.1 Core observation boundary
+
+The core server can publish generic observations to callbacks supplied at
+startup:
+
+- A validated known-device sensor observation, including MAC, area, transport,
+  sensor definition, server timestamp, and raw value.
+- Successful binding of a TCP connection ID to a device MAC.
+- Disconnection of a bound TCP connection ID and MAC.
+
+These observations contain no HTTP-specific types. Consumers must keep callback
+work bounded so they do not delay ingestion. Connection IDs allow a consumer to
+ignore the delayed disconnection of an older connection after the same MAC has
+already bound a replacement connection.
+
+### 2.2 HTTP live events
+
+The optional HTTP plugin exposes `/api/v1/events` using Server-Sent Events.
+Monitoring callbacks update in-memory state under a lock, release that lock,
+and then publish a copied event payload. Each subscriber has a bounded queue;
+publishing never waits for a slow client. The stream sends sensor observations
+and effective TCP connection transitions, plus periodic heartbeat comments.
+
+Events are not retained or replayed. Clients obtain authoritative state from
+the REST endpoints before opening the stream and after reconnecting. Plugin
+shutdown explicitly cancels active streams before waiting for HTTP shutdown;
+the core sensor server remains independent of this lifecycle.
+
 ## 3. Configuration
 
 The server loads a JSON configuration file containing:

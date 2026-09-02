@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "address": ":8080",
+  "history_capacity": 1000,
+  "thresholds": []
+}

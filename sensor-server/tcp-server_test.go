@@ -82,6 +82,43 @@ func TestTCPServerReplacesOlderConnectionForMAC(t *testing.T) {
 	}
 }
 
+func TestTCPServerReportsMACBoundDeviceLifecycle(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen() error = %v", err)
+	}
+	handler := &recordingMessageHandler{notify: make(chan struct{}, 16)}
+	connected := make(chan MACAddress, 1)
+	disconnected := make(chan MACAddress, 1)
+	server, err := NewTCPServer(listener, handler, SystemClock{}, TCPServerOptions{
+		MaximumConnections:   8,
+		PayloadDeadline:      time.Second,
+		OnDeviceConnected:    func(_ uint64, mac MACAddress) { connected <- mac },
+		OnDeviceDisconnected: func(_ uint64, mac MACAddress) { disconnected <- mac },
+	})
+	if err != nil {
+		t.Fatalf("NewTCPServer() error = %v", err)
+	}
+	client, serverConnection := net.Pipe()
+	server.startConnection(serverConnection)
+	mac := MACAddress{1, 2, 3, 4, 5, 6}
+	go func() {
+		_, _ = client.Write(encodedSensorMessage(t, mac, 10))
+		_ = client.Close()
+	}()
+
+	handler.waitFor(t, 1)
+	if got := <-connected; got != mac {
+		t.Fatalf("connected MAC = %x, want %x", got, mac)
+	}
+	if err := server.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if got := <-disconnected; got != mac {
+		t.Fatalf("disconnected MAC = %x, want %x", got, mac)
+	}
+}
+
 func TestTCPServerContinuesAfterBadChecksum(t *testing.T) {
 	server, handler := newPipeTCPServer(t)
 	client, serverConnection := net.Pipe()

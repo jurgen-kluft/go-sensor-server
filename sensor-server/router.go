@@ -47,7 +47,7 @@ func (registry *ConfigRegistry) Reload(candidate *ConfigSnapshot) error {
 }
 
 type SensorDataWriter interface {
-	WriteSensorData(ctx context.Context, area, sensorType string, timestamp int64, value int16) error
+	WriteSensorData(ctx context.Context, area AreaType, sensorType SensorType, timestamp int64, value int16) error
 }
 
 type UnknownMessage struct {
@@ -58,6 +58,16 @@ type UnknownMessage struct {
 
 type UnknownMessageWriter interface {
 	WriteUnknownMessage(ctx context.Context, message UnknownMessage) error
+}
+
+type SensorObservation struct {
+	MAC        MACAddress
+	Area       AreaType
+	Transport  Transport
+	SensorType SensorType
+	UnitType   UnitType
+	Timestamp  int64
+	Value      int16
 }
 
 type RouterCounters struct {
@@ -72,9 +82,10 @@ type RouterCounters struct {
 }
 
 type MessageRouter struct {
-	registry   *ConfigRegistry
-	dataWriter SensorDataWriter
-	unknown    UnknownMessageWriter
+	registry            *ConfigRegistry
+	dataWriter          SensorDataWriter
+	unknown             UnknownMessageWriter
+	onSensorObservation func(SensorObservation)
 
 	messages           atomic.Uint64
 	keepalives         atomic.Uint64
@@ -122,17 +133,25 @@ func (router *MessageRouter) Route(ctx context.Context, transport Transport, tim
 
 	var result error
 	for _, record := range message.Sensors {
-		sensor, exists := snapshot.Sensor(record.ID)
+		sensor, exists := snapshot.Sensor(record.SensorType)
 		if !exists {
 			router.unknownSensors.Add(1)
 			router.recordsRejected.Add(1)
-			result = errors.Join(result, fmt.Errorf("sensor ID %d: %w", record.ID, ErrUnknownSensor))
+			result = errors.Join(result, fmt.Errorf("sensor ID %d: %w", record.SensorType, ErrUnknownSensor))
 			continue
+		}
+		if router.onSensorObservation != nil {
+			sensorUnit := UnitForSensorType(sensor.Type)
+			router.onSensorObservation(SensorObservation{
+				MAC: message.Header.MAC, Area: device.Area, Transport: transport,
+				SensorType: record.SensorType, UnitType: sensorUnit,
+				Timestamp: timestamp, Value: record.Value,
+			})
 		}
 		if err := router.dataWriter.WriteSensorData(ctx, device.Area, sensor.Type, timestamp, record.Value); err != nil {
 			router.dataEngineFailures.Add(1)
 			router.recordsRejected.Add(1)
-			result = errors.Join(result, fmt.Errorf("write %s/%s sensor %d: %w", device.Area, sensor.Type, record.ID, err))
+			result = errors.Join(result, fmt.Errorf("write %s/%s sensor %d: %w", device.Area, sensor.Type, record.SensorType, err))
 			continue
 		}
 		router.recordsAccepted.Add(1)

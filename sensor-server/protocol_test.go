@@ -29,7 +29,7 @@ func TestDecodeDatagramGoldenMessage(t *testing.T) {
 	if message.Header.MAC != (MACAddress{0x02, 0x00, 0x00, 0xab, 0xcd, 0xef}) {
 		t.Fatalf("MAC = %x", message.Header.MAC)
 	}
-	want := []SensorRecord{{ID: 1, Value: 215}, {ID: 2, Value: -45}}
+	want := []SensorRecord{{SensorType: 1, Value: 215}, {SensorType: 2, Value: -45}}
 	if len(message.Sensors) != len(want) {
 		t.Fatalf("Sensors length = %d, want %d", len(message.Sensors), len(want))
 	}

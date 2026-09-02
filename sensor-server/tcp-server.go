@@ -18,11 +18,13 @@ type MessageHandler interface {
 }
 
 type TCPServerOptions struct {
-	MaximumConnections int
-	PayloadDeadline    time.Duration
-	OnWarning          func(error)
-	OnConnection       func(connectionID uint64, remoteAddress string)
-	OnDisconnection    func(connectionID uint64, mac MACAddress, remoteAddress string)
+	MaximumConnections   int
+	PayloadDeadline      time.Duration
+	OnWarning            func(error)
+	OnConnection         func(connectionID uint64, remoteAddress string)
+	OnDisconnection      func(connectionID uint64, mac MACAddress, remoteAddress string)
+	OnDeviceConnected    func(connectionID uint64, mac MACAddress)
+	OnDeviceDisconnected func(connectionID uint64, mac MACAddress)
 }
 
 type TCPServerCounters struct {
@@ -85,6 +87,12 @@ func NewTCPServer(listener net.Listener, handler MessageHandler, clock Clock, op
 	}
 	if options.OnDisconnection == nil {
 		options.OnDisconnection = func(uint64, MACAddress, string) {}
+	}
+	if options.OnDeviceConnected == nil {
+		options.OnDeviceConnected = func(uint64, MACAddress) {}
+	}
+	if options.OnDeviceDisconnected == nil {
+		options.OnDeviceDisconnected = func(uint64, MACAddress) {}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &TCPServer{
@@ -176,6 +184,9 @@ func (server *TCPServer) serveConnection(connection *tcpConnection) {
 		server.removeConnection(connection)
 		<-server.limit
 		server.active.Add(^uint64(0))
+		if connection.bound {
+			server.options.OnDeviceDisconnected(connection.id, connection.mac)
+		}
 		server.options.OnDisconnection(connection.id, connection.mac, connection.remote)
 	}()
 
@@ -244,6 +255,7 @@ func (server *TCPServer) bindConnection(connection *tcpConnection, mac MACAddres
 	connection.bound = true
 	server.byMAC[mac] = connection
 	server.mu.Unlock()
+	server.options.OnDeviceConnected(connection.id, mac)
 	if previous != nil && previous != connection {
 		_ = previous.conn.Close()
 	}

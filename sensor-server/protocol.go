@@ -37,13 +37,13 @@ type MessageHeader struct {
 	Magic         uint16
 	Type          MessageType
 	PayloadLength uint16
-	Checksum      uint32
 	MAC           MACAddress
+	Checksum      uint32
 }
 
 type SensorRecord struct {
-	ID    uint16
-	Value int16
+	SensorType SensorType
+	Value      int16
 }
 
 type Message struct {
@@ -62,9 +62,9 @@ func DecodeHeader(data []byte) (MessageHeader, error) {
 		Magic:         binary.LittleEndian.Uint16(data[0:2]),
 		Type:          MessageType(binary.LittleEndian.Uint16(data[2:4])),
 		PayloadLength: binary.LittleEndian.Uint16(data[4:6]),
-		Checksum:      binary.LittleEndian.Uint32(data[6:10]),
+		Checksum:      binary.LittleEndian.Uint32(data[12:16]),
 	}
-	copy(header.MAC[:], data[10:16])
+	copy(header.MAC[:], data[6:12])
 
 	if header.Magic != MessageMagic {
 		return MessageHeader{}, fmt.Errorf("decode header: got 0x%04X: %w", header.Magic, ErrInvalidMagic)
@@ -96,9 +96,10 @@ func DecodeMessage(header MessageHeader, payload []byte) (Message, error) {
 		Sensors: make([]SensorRecord, 0, len(payload)/SensorRecordSize),
 	}
 	for offset := 0; offset < len(payload); offset += SensorRecordSize {
+		sensorTypeValue := binary.LittleEndian.Uint16(payload[offset : offset+2])
 		message.Sensors = append(message.Sensors, SensorRecord{
-			ID:    binary.LittleEndian.Uint16(payload[offset : offset+2]),
-			Value: int16(binary.LittleEndian.Uint16(payload[offset+2 : offset+4])),
+			SensorType: ToSensorType(sensorTypeValue),
+			Value:      int16(binary.LittleEndian.Uint16(payload[offset+2 : offset+4])),
 		})
 	}
 
