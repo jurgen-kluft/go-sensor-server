@@ -335,6 +335,138 @@ func (u UnitType) String() string {
 	return "Unknown"
 }
 
+func (u UnitType) Symbol() string {
+	if symbol, exists := UnitTypeToSymbolString[u]; exists {
+		return symbol
+	}
+	return "?"
+}
+
+var UnitTypeToSymbolString = map[UnitType]string{
+	// Temperature (0–2)
+	UTemperature: "°C",
+	UCelcius:     "°C",
+	UFahrenheit:  "°F",
+	UKelvin:      "K",
+
+	// Pressure (6–9)
+	UPressure:   "Pa",
+	UBar:        "bar",
+	UPascal:     "Pa",
+	UAtmosphere: "atm",
+
+	// Humidity (13)
+	UHumidity: "%",
+
+	// Speed & Acceleration (17–21)
+	UVelocity:          "m/s",
+	UKilometersPerHour: "km/h",
+	UMilesPerHour:      "mph",
+	UAcceleration:      "m/s²",
+	UGForce:            "g",
+
+	// Concentration (25–26)
+	UPpm:     "ppm",
+	UPpb:     "ppb",
+	UPercent: "%",
+
+	// Mass (30–36)
+	UKilograms:  "kg",
+	UGrams:      "g",
+	UMilligrams: "mg",
+	UMicrograms: "µg",
+	UTons:       "t",
+	UPounds:     "lb",
+	UOunces:     "oz",
+
+	// Length & Distance (40–46)
+	UKilometers:  "km",
+	UMeters:      "m",
+	UCentimeters: "cm",
+	UMillimeters: "mm",
+	UMiles:       "mi",
+	UFeet:        "ft",
+	UInches:      "in",
+
+	// Time (50–55)
+	UHours:        "h",
+	UMinutes:      "min",
+	USeconds:      "s",
+	UMilliseconds: "ms",
+	UMicroseconds: "µs",
+	UNanoseconds:  "ns",
+
+	// Volume (59–62)
+	ULiters:      "L",
+	UMilliliters: "mL",
+	UCubicMeters: "m³",
+	UGallons:     "gal",
+
+	// Energy & Power (66–71)
+	UJoules:       "J",
+	UKiloJoules:   "kJ",
+	UWatts:        "W",
+	UKiloWatts:    "kW",
+	UMegaWatts:    "MW",
+	UKiloWattHour: "kWh",
+
+	// Data Size (75–79)
+	UBytes:     "B",
+	UKiloBytes: "kB",
+	UMegaBytes: "MB",
+	UGigaBytes: "GB",
+	UTeraBytes: "TB",
+
+	// Electrical (83–89)
+	UVolt:        "V",
+	UMilliVolt:   "mV",
+	UAmpere:      "A",
+	UMilliAmpere: "mA",
+	UOhm:         "Ω",
+	UFarad:       "F",
+	UHenry:       "H",
+	UdBm:         "dBm",
+
+	// Frequency (93–96)
+	UHertz:     "Hz",
+	UKiloHertz: "kHz",
+	UMegaHertz: "MHz",
+	UGigaHertz: "GHz",
+
+	// Angle (100–101)
+	UDegrees: "°",
+	URadians: "rad",
+
+	// Logical / State Units (105–115)
+	UOnOff:               "On/Off",
+	UOpenClose:           "Open/Close",
+	UTrueFalse:           "True/False",
+	UActiveInactive:      "Active/Inactive",
+	UEnabledDisabled:     "Enabled/Disabled",
+	UStartStop:           "Start/Stop",
+	UAlarmNormal:         "Alarm/Normal",
+	UFaultNormal:         "Fault/Normal",
+	UPresentAbsent:       "Present/Absent",
+	UDetectedNotDetected: "Detected/Not Detected",
+
+	// Sound
+	UDecibels: "dB",
+
+	// Light
+	ULux:     "lx",
+	UUvIndex: "UV Index",
+
+	// mg/m3, ug/m3
+	Uugm3: "µg/m³",
+	Umgm3: "mg/m³",
+
+	// Data
+	UBinaryData: "Binary Data",
+	UMacAddress: "MAC Address",
+
+	UUnknown: "?",
+}
+
 var UnitTypeToString = map[UnitType]string{
 	UTemperature:         "Temperature",
 	UCelcius:             "Celsius",

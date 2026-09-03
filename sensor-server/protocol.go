@@ -58,7 +58,7 @@ func DecodeHeader(data []byte) (MessageHeader, error) {
 		return MessageHeader{}, fmt.Errorf("decode header: got %d bytes, want %d: %w", len(data), MessageHeaderSize, io.ErrUnexpectedEOF)
 	}
 
-	binaryData := BinaryData{buf: data, off: 0}
+	binaryData := &BinaryData{buf: data, off: 0}
 
 	hdrMagic := binaryData.ReadUint16()
 	hdrType := MessageType(binaryData.ReadUint16())
@@ -104,9 +104,8 @@ func DecodeMessage(header MessageHeader, payload []byte) (Message, error) {
 		Sensors: make([]SensorRecord, 0, len(payload)/SensorRecordSize),
 	}
 
-	binaryData := BinaryData{buf: payload, off: 0}
-	numberOfRecords := int(header.PayloadLength) / SensorRecordSize
-	for i := 0; i < numberOfRecords; i += 1 {
+	binaryData := &BinaryData{buf: payload, off: 0}
+	for i := 0; i < cap(message.Sensors); i += 1 {
 		sensorTypeValue := uint16(binaryData.ReadUint8())
 		message.Sensors = append(message.Sensors, SensorRecord{
 			SensorType: ToSensorType(sensorTypeValue),
