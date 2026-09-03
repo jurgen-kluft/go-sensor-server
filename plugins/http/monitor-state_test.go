@@ -15,7 +15,7 @@ func TestMonitoringStateKeepsBoundedHistoryAndClearsThreshold(t *testing.T) {
 	mac := sensorserver.MACAddress{2, 0, 0, 0xab, 0xcd, 0xef}
 	for index, value := range []int32{90, 110, 95} {
 		state.OnSensorObservation(sensorserver.SensorObservation{
-			MAC: mac, Area: sensorserver.Area1stLivingRoom, Transport: sensorserver.TransportUDP,
+			MAC: mac, Area: sensorserver.AreaLivingRoom, Transport: sensorserver.TransportUDP,
 			SensorType: sensorserver.SENSOR_ID_TEMPERATURE, UnitType: sensorserver.UCelcius,
 			Timestamp: int64(index + 1), Value: value,
 		})
@@ -63,7 +63,7 @@ func TestMonitoringStatePublishesSensorAndEffectiveConnectionEvents(t *testing.T
 	state.OnDeviceConnected(2, mac)
 	state.OnDeviceDisconnected(1, mac)
 	state.OnSensorObservation(sensorserver.SensorObservation{
-		MAC: mac, Area: sensorserver.Area1stLivingRoom, Transport: sensorserver.TransportTCP,
+		MAC: mac, Area: sensorserver.AreaLivingRoom, Transport: sensorserver.TransportTCP,
 		SensorType: sensorserver.SENSOR_ID_TEMPERATURE, UnitType: sensorserver.UCelcius, Timestamp: 10, Value: 20,
 	})
 	state.OnDeviceDisconnected(2, mac)

@@ -19,7 +19,7 @@ func TestMessageRouterRoutesKnownDeviceRecords(t *testing.T) {
 		t.Fatalf("writes = %d, want 1", len(dataWriter.writes))
 	}
 	write := dataWriter.writes[0]
-	if write.area != Area1stLivingRoom || write.sensorType != SENSOR_ID_TEMPERATURE || write.timestamp != 1234 || write.value != 215 {
+	if write.area != AreaLivingRoom || write.sensorType != SENSOR_ID_TEMPERATURE || write.timestamp != 1234 || write.value != 215 {
 		t.Fatalf("write = %+v", write)
 	}
 }
@@ -39,7 +39,7 @@ func TestMessageRouterObservesOnlyKnownDeviceAndSensorRecords(t *testing.T) {
 		t.Fatalf("observations = %d, want 1", len(observations))
 	}
 	want := SensorObservation{
-		MAC: mac, Area: Area1stLivingRoom, Transport: TransportUDP,
+		MAC: mac, Area: AreaLivingRoom, Transport: TransportUDP,
 		SensorType: SENSOR_ID_TEMPERATURE, UnitType: UCelcius,
 		Timestamp: 1234, Value: 215,
 	}
@@ -101,7 +101,7 @@ func TestConfigRegistryReloadIsAtomicForReaders(t *testing.T) {
 		go func() {
 			defer waitGroup.Done()
 			device, ok := registry.Snapshot().Device(mac)
-			if !ok || (device.Area != Area1stLivingRoom && device.Area != Area1stKitchen) {
+			if !ok || (device.Area != AreaLivingRoom && device.Area != AreaKitchen) {
 				t.Errorf("Device() = %+v, %v", device, ok)
 			}
 		}()

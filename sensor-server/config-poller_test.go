@@ -26,7 +26,7 @@ func TestConfigPollerPublishesDeviceChange(t *testing.T) {
 	}
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, _ := registry.Snapshot().Device(mac)
-	if device.Area != Area1stKitchen {
+	if device.Area != AreaKitchen {
 		t.Fatalf("device area = %q, want 1st Kitchen", device.Area)
 	}
 }
@@ -46,7 +46,7 @@ func TestConfigPollerKeepsSnapshotAfterInvalidReload(t *testing.T) {
 	}
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, _ := registry.Snapshot().Device(mac)
-	if device.Area != Area1stLivingRoom {
+	if device.Area != AreaLivingRoom {
 		t.Fatalf("device area = %q, want LivingRoom", device.Area)
 	}
 	if reloaded, err := poller.Poll(); err != nil || reloaded {

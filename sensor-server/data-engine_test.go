@@ -28,7 +28,7 @@ func TestDataEngineCreatesOneStreamForConcurrentWrites(t *testing.T) {
 		waitGroup.Add(1)
 		go func(value int) {
 			defer waitGroup.Done()
-			if err := engine.WriteSensorData(context.Background(), Area1stLivingRoom, SENSOR_ID_TEMPERATURE, int64(value), int32(value)); err != nil {
+			if err := engine.WriteSensorData(context.Background(), AreaLivingRoom, SENSOR_ID_TEMPERATURE, int64(value), int32(value)); err != nil {
 				t.Errorf("WriteSensorData() error = %v", err)
 			}
 		}(index)
@@ -56,7 +56,7 @@ func TestDataEngineSeparatesStreamKeys(t *testing.T) {
 	}
 	defer engine.Close()
 
-	areas := []AreaType{Area1stKitchen, Area1stLivingRoom, Area1stBedroom}
+	areas := []AreaType{AreaKitchen, AreaLivingRoom, AreaBedroom}
 	sensors := []SensorType{SENSOR_ID_TEMPERATURE, SENSOR_ID_HUMIDITY, SENSOR_ID_PRESSURE}
 
 	for i, area := range areas {
@@ -80,7 +80,7 @@ func TestDataEngineRejectsWritesAfterClose(t *testing.T) {
 	if err := engine.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	if err := engine.WriteSensorData(context.Background(), Area1stLivingRoom, SENSOR_ID_TEMPERATURE, 1, 1); !errors.Is(err, ErrDataEngineClosed) {
+	if err := engine.WriteSensorData(context.Background(), AreaLivingRoom, SENSOR_ID_TEMPERATURE, 1, 1); !errors.Is(err, ErrDataEngineClosed) {
 		t.Fatalf("WriteSensorData() error = %v, want ErrDataEngineClosed", err)
 	}
 }

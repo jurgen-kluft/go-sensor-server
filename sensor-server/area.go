@@ -1,68 +1,89 @@
 package sensorserver
 
-type AreaType uint16
+type AreaType uint8
 
 const (
 	AreaUnknown  AreaType = iota
-	AreaBasement          = 0x0001
-	Area1stFloor          = 0x0100
-	Area2ndFloor          = 0x0200
-	Area3rdFloor          = 0x0300
+	AreaBasement          = 0x01
+	Area1stFloor          = 0x10
+	Area2ndFloor          = 0x20
+	Area3rdFloor          = 0x30
 
-	AreaFrontGarden = Area1stFloor + 0x0001
-	AreaBackGarden  = Area1stFloor + 0x0002
-	AreaCarPark     = Area1stFloor + 0x0003
+	AreaFrontGarden = Area1stFloor + 0x01
+	AreaBackGarden  = Area1stFloor + 0x02
+	AreaCarPark     = Area1stFloor + 0x03
 
-	Area1stLivingRoom = Area1stFloor + 0x0004
-	Area1stKitchen    = Area1stFloor + 0x0005
-	Area1stBedroom    = Area1stFloor + 0x0006
-	Area1stBathroom   = Area1stFloor + 0x0007
-	Area1stOffice     = Area1stFloor + 0x0008
+	AreaBasementFrontRoom = AreaBasement + 0x01
+	AreaBasementBackRoom  = AreaBasement + 0x02
+	AreaBasementStairs    = AreaBasement + 0x03
 
-	Area2ndLivingRoom = Area2ndFloor + 0x0002
-	Area2ndBedroom    = Area2ndFloor + 0x0004
-	Area2ndBathroom   = Area2ndFloor + 0x0005
-	Area2ndStudy      = Area2ndFloor + 0x0006
-	Area2ndWashRoom   = Area2ndFloor + 0x0007
-	Area2ndStairs     = Area2ndFloor + 0x0008
+	AreaLivingRoom = Area1stFloor + 0x04
+	AreaKitchen    = Area1stFloor + 0x05
+	AreaBedroom    = Area1stFloor + 0x06
+	AreaBathroom   = Area1stFloor + 0x07
+	AreaOffice     = Area1stFloor + 0x08
 
-	Area3rdLivingRoom = Area3rdFloor + 0x0002
-	Area3rdBedroom    = Area3rdFloor + 0x0004
-	Area3rdBathroom   = Area3rdFloor + 0x0005
-	Area3rdStairs     = Area3rdFloor + 0x0008
+	Area2ndLivingRoom = Area2ndFloor + 0x02
+	Area2ndBedroom    = Area2ndFloor + 0x04
+	Area2ndBathroom   = Area2ndFloor + 0x05
+	Area2ndStudy      = Area2ndFloor + 0x06
+	Area2ndWashRoom   = Area2ndFloor + 0x07
+	Area2ndStairs     = Area2ndFloor + 0x08
 
-	AreaAttic = Area3rdFloor + 0x0001
+	Area3rdLivingRoom = Area3rdFloor + 0x02
+	Area3rdBedroom    = Area3rdFloor + 0x04
+	Area3rdBathroom   = Area3rdFloor + 0x05
+	Area3rdStairs     = Area3rdFloor + 0x08
+
+	AreaAttic = Area3rdFloor + 0x01
 )
 
 var AreaNames = map[AreaType]string{
-	AreaUnknown:       "Unknown",
-	AreaBasement:      "Basement",
-	Area1stFloor:      "1st Floor",
-	Area2ndFloor:      "2nd Floor",
-	Area3rdFloor:      "3rd Floor",
-	AreaFrontGarden:   "Front Garden",
-	AreaBackGarden:    "Back Garden",
-	AreaCarPark:       "Car Park",
-	Area1stLivingRoom: "1st Living Room",
-	Area1stKitchen:    "1st Kitchen",
-	Area1stBedroom:    "1st Bedroom",
-	Area1stBathroom:   "1st Bathroom",
-	Area1stOffice:     "1st Office",
-	Area2ndLivingRoom: "2nd Living Room",
-	Area2ndBedroom:    "2nd Bedroom",
-	Area2ndBathroom:   "2nd Bathroom",
-	Area2ndStudy:      "2nd Study",
-	Area2ndWashRoom:   "2nd Wash Room",
-	Area2ndStairs:     "2nd Stairs",
-	Area3rdLivingRoom: "3rd Living Room",
-	Area3rdBedroom:    "3rd Bedroom",
-	Area3rdBathroom:   "3rd Bathroom",
-	Area3rdStairs:     "3rd Stairs",
-	AreaAttic:         "Attic",
+	AreaUnknown:           "Unknown",
+	AreaBasement:          "Basement",
+	Area1stFloor:          "",
+	Area2ndFloor:          "2nd Floor",
+	Area3rdFloor:          "3rd Floor",
+	AreaFrontGarden:       "Front Garden",
+	AreaBackGarden:        "Back Garden",
+	AreaCarPark:           "Car Park",
+	AreaBasementFrontRoom: "Front Room",
+	AreaBasementBackRoom:  "Back Room",
+	AreaBasementStairs:    "Stairs",
+	AreaLivingRoom:        "Living Room",
+	AreaKitchen:           "Kitchen",
+	AreaBedroom:           "Bedroom",
+	AreaBathroom:          "Bathroom",
+	AreaOffice:            "Office",
+	Area2ndLivingRoom:     "Living Room",
+	Area2ndBedroom:        "Bedroom",
+	Area2ndBathroom:       "Bathroom",
+	Area2ndStudy:          "Study",
+	Area2ndWashRoom:       "Wash Room",
+	Area2ndStairs:         "Stairs",
+	Area3rdLivingRoom:     "Living Room",
+	Area3rdBedroom:        "Bedroom",
+	Area3rdBathroom:       "Bathroom",
+	Area3rdStairs:         "Stairs",
+	AreaAttic:             "Attic",
+}
+
+var FloorAreaNames = []string{
+	"Basement",
+	"",
+	"2nd Floor",
+	"3rd Floor",
 }
 
 func (a AreaType) String() string {
 	if name, ok := AreaNames[a]; ok {
+		floor := (int(a) >> 4) & 0x0f
+		if floor < len(FloorAreaNames) {
+			if len(FloorAreaNames[floor]) == 0 {
+				return name
+			}
+			return name + " (" + FloorAreaNames[floor] + ")"
+		}
 		return name
 	}
 	return "Unknown"
@@ -77,12 +98,12 @@ var AreaNamesToType = map[string]AreaType{
 	"Front Garden":    AreaFrontGarden,
 	"Back Garden":     AreaBackGarden,
 	"Car Park":        AreaCarPark,
-	"LivingRoom":      Area1stLivingRoom,
-	"1st Living Room": Area1stLivingRoom,
-	"1st Kitchen":     Area1stKitchen,
-	"1st Bedroom":     Area1stBedroom,
-	"1st Bathroom":    Area1stBathroom,
-	"1st Office":      Area1stOffice,
+	"LivingRoom":      AreaLivingRoom,
+	"1st Living Room": AreaLivingRoom,
+	"1st Kitchen":     AreaKitchen,
+	"1st Bedroom":     AreaBedroom,
+	"1st Bathroom":    AreaBathroom,
+	"1st Office":      AreaOffice,
 	"2nd Living Room": Area2ndLivingRoom,
 	"2nd Bedroom":     Area2ndBedroom,
 	"2nd Bathroom":    Area2ndBathroom,
