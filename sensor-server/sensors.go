@@ -2,73 +2,6 @@ package sensorserver
 
 import "fmt"
 
-/*
-   typedef u8 sensor_type_t;
-
-   enum sensor_type_e
-   {
-       SENSOR_ID_UNKNOWN       = 0,       // Unknown
-       SENSOR_ID_TEMPERATURE   = 1,       // Temperature
-       SENSOR_ID_HUMIDITY      = 2,       // Humidity
-       SENSOR_ID_PRESSURE      = 3,       // Pressure
-       SENSOR_ID_LIGHT         = 4,       // Light
-       SENSOR_ID_UV            = 5,       // UV
-       SENSOR_ID_CO            = 6,       // Carbon Monoxide
-       SENSOR_ID_CO2           = 7,       // Carbon Dioxide
-       SENSOR_ID_HCHO          = 8,       // Formaldehyde
-       SENSOR_ID_VOC           = 9,       // Volatile Organic Compounds
-       SENSOR_ID_NOX           = 10,      // Nitrogen Oxides
-       SENSOR_ID_PM005         = 11,      // Particulate Matter 0.5
-       SENSOR_ID_PM010         = 12,      // Particulate Matter 1.0
-       SENSOR_ID_PM025         = 13,      // Particulate Matter 2.5
-       SENSOR_ID_PM040         = 14,      // Particulate Matter 4.0
-       SENSOR_ID_PM100         = 15,      // Particulate Matter 10.0
-       SENSOR_ID_NOISE         = 16,      // Noise
-       SENSOR_ID_VIBRATION     = 17,      // Vibration
-       SENSOR_ID_STATE         = 18,      // State
-       SENSOR_ID_BATTERY       = 19,      // Battery
-       SENSOR_ID_SWITCH1       = 21,      // On/Off, Open/Close (same as ID_SWITCH)
-       SENSOR_ID_SWITCH2       = 22,      // On/Off, Open/Close
-       SENSOR_ID_SWITCH3       = 23,      // On/Off, Open/Close
-       SENSOR_ID_SWITCH4       = 24,      // On/Off, Open/Close
-       SENSOR_ID_SWITCH5       = 25,      // On/Off, Open/Close
-       SENSOR_ID_SWITCH6       = 26,      // On/Off, Open/Close
-       SENSOR_ID_SWITCH7       = 27,      // On/Off, Open/Close
-       SENSOR_ID_SWITCH8       = 28,      // On/Off, Open/Close
-       SENSOR_ID_SWITCH9       = 29,      // On/Off, Open/Close
-       SENSOR_ID_PRESENCE1     = 51,      // Presence1
-       SENSOR_ID_PRESENCE2     = 52,      // Presence2
-       SENSOR_ID_PRESENCE3     = 53,      // Presence3
-       SENSOR_ID_DISTANCE1     = 54,      // Distance1
-       SENSOR_ID_DISTANCE2     = 55,      // Distance2
-       SENSOR_ID_DISTANCE3     = 56,      // Distance3
-       SENSOR_ID_POS1_X        = 57,      // X
-       SENSOR_ID_POS1_Y        = 58,      // Y
-       SENSOR_ID_POS1_Z        = 59,      // Z
-       SENSOR_ID_POS2_X        = 60,      // X
-       SENSOR_ID_POS2_Y        = 61,      // Y
-       SENSOR_ID_POS2_Z        = 62,      // Z
-       SENSOR_ID_POS3_X        = 63,      // X
-       SENSOR_ID_POS3_Y        = 64,      // Y
-       SENSOR_ID_POS3_Z        = 65,      // Z
-       SENSOR_ID_RSSI          = 66,      // RSSI
-       SENSOR_ID_PERF1         = 67,      // Performance Metric 1
-       SENSOR_ID_PERF2         = 68,      // Performance Metric 2
-       SENSOR_ID_PERF3         = 69,      // Performance Metric 3
-       SENSOR_ID_VOLTAGE       = 70,      // Voltage
-       SENSOR_ID_CURRENT       = 71,      // Current
-       SENSOR_ID_POWER         = 72,      // Power
-       SENSOR_ID_ENERGY        = 73,      // Energy
-       SENSOR_ID_JSON          = 75,      // JSON Data
-       SENSOR_ID_IMAGE         = 76,      // Image Data
-       SENSOR_ID_GAS_M3        = 77,      // Gas Meter
-       SENSOR_ID_WATER_M3      = 78,      // Water Meter
-       SENSOR_ID_kWAh          = 79,      // Electric Meter (kilowatt-hours)
-       SENSOR_ID_COUNT,                   // The maximum number of ID (highest index + 1)
-   };
-
-*/
-
 type SensorType uint8
 
 const (
@@ -92,43 +25,34 @@ const (
 	SENSOR_ID_VIBRATION   SensorType = 17 // Vibration
 	SENSOR_ID_STATE       SensorType = 18 // State
 	SENSOR_ID_BATTERY     SensorType = 19 // Battery
-	SENSOR_ID_SWITCH1     SensorType = 21 // On/Off, Open/Close (same as ID_SWITCH)
-	SENSOR_ID_SWITCH2     SensorType = 22 // On/Off, Open/Close
-	SENSOR_ID_SWITCH3     SensorType = 23 // On/Off, Open/Close
-	SENSOR_ID_SWITCH4     SensorType = 24 // On/Off, Open/Close
-	SENSOR_ID_SWITCH5     SensorType = 25 // On/Off, Open/Close
-	SENSOR_ID_SWITCH6     SensorType = 26 // On/Off, Open/Close
-	SENSOR_ID_SWITCH7     SensorType = 27 // On/Off, Open/Close
-	SENSOR_ID_SWITCH8     SensorType = 28 // On/Off, Open/Close
-	SENSOR_ID_SWITCH9     SensorType = 29 // On/Off, Open/Close
-	SENSOR_ID_PRESENCE1   SensorType = 51 // Presence1
-	SENSOR_ID_PRESENCE2   SensorType = 52 // Presence2
-	SENSOR_ID_PRESENCE3   SensorType = 53 // Presence3
-	SENSOR_ID_DISTANCE1   SensorType = 54 // Distance1
-	SENSOR_ID_DISTANCE2   SensorType = 55 // Distance2
-	SENSOR_ID_DISTANCE3   SensorType = 56 // Distance3
-	SENSOR_ID_POS1_X      SensorType = 57 // X
-	SENSOR_ID_POS1_Y      SensorType = 58 // Y
-	SENSOR_ID_POS1_Z      SensorType = 59 // Z
-	SENSOR_ID_POS2_X      SensorType = 60 // X
-	SENSOR_ID_POS2_Y      SensorType = 61 // Y
-	SENSOR_ID_POS2_Z      SensorType = 62 // Z
-	SENSOR_ID_POS3_X      SensorType = 63 // X
-	SENSOR_ID_POS3_Y      SensorType = 64 // Y
-	SENSOR_ID_POS3_Z      SensorType = 65 // Z
-	SENSOR_ID_RSSI        SensorType = 66 // RSSI
-	SENSOR_ID_PERF1       SensorType = 67 // Performance Metric 1
-	SENSOR_ID_PERF2       SensorType = 68 // Performance Metric 2
-	SENSOR_ID_PERF3       SensorType = 69 // Performance Metric 3
-	SENSOR_ID_VOLTAGE     SensorType = 70 // Voltage
-	SENSOR_ID_CURRENT     SensorType = 71 // Current
-	SENSOR_ID_POWER       SensorType = 72 // Power
-	SENSOR_ID_ENERGY      SensorType = 73 // Energy
-	SENSOR_ID_JSON        SensorType = 75 // JSON Data
-	SENSOR_ID_IMAGE       SensorType = 76 // Image Data
-	SENSOR_ID_GAS_M3      SensorType = 77 // Gas Meter
-	SENSOR_ID_WATER_M3    SensorType = 78 // Water Meter
-	SENSOR_ID_kWAh        SensorType = 79 // Electric Meter (kilowatt-hours)
+	SENSOR_ID_PRESENCE1   SensorType = 20 // Presence1
+	SENSOR_ID_PRESENCE2   SensorType = 21 // Presence2
+	SENSOR_ID_PRESENCE3   SensorType = 22 // Presence3
+	SENSOR_ID_DISTANCE1   SensorType = 23 // Distance1
+	SENSOR_ID_DISTANCE2   SensorType = 24 // Distance2
+	SENSOR_ID_DISTANCE3   SensorType = 25 // Distance3
+	SENSOR_ID_POS1_X      SensorType = 26 // X
+	SENSOR_ID_POS1_Y      SensorType = 27 // Y
+	SENSOR_ID_POS1_Z      SensorType = 28 // Z
+	SENSOR_ID_POS2_X      SensorType = 29 // X
+	SENSOR_ID_POS2_Y      SensorType = 30 // Y
+	SENSOR_ID_POS2_Z      SensorType = 31 // Z
+	SENSOR_ID_POS3_X      SensorType = 32 // X
+	SENSOR_ID_POS3_Y      SensorType = 33 // Y
+	SENSOR_ID_POS3_Z      SensorType = 34 // Z
+	SENSOR_ID_RSSI        SensorType = 35 // RSSI
+	SENSOR_ID_PERF1       SensorType = 36 // Performance Metric 1
+	SENSOR_ID_PERF2       SensorType = 37 // Performance Metric 2
+	SENSOR_ID_PERF3       SensorType = 38 // Performance Metric 3
+	SENSOR_ID_VOLTAGE     SensorType = 39 // Voltage
+	SENSOR_ID_CURRENT     SensorType = 40 // Current
+	SENSOR_ID_POWER       SensorType = 41 // Power
+	SENSOR_ID_ENERGY      SensorType = 42 // Energy
+	SENSOR_ID_JSON        SensorType = 43 // JSON Data
+	SENSOR_ID_IMAGE       SensorType = 44 // Image Data
+	SENSOR_ID_GAS_M3      SensorType = 45 // Gas Meter
+	SENSOR_ID_WATER_M3    SensorType = 46 // Water Meter
+	SENSOR_ID_kWAh        SensorType = 47 // Electric Meter (kilowatt-hours)
 )
 
 func ToSensorType(id uint16) SensorType {
@@ -164,15 +88,6 @@ var SensorTypeValueRanges = map[SensorType]SensorTypeValueRange{
 	SENSOR_ID_VIBRATION:   {Min: 0, Max: 10000},
 	SENSOR_ID_STATE:       {Min: 0, Max: 1},
 	SENSOR_ID_BATTERY:     {Min: 0, Max: 100},
-	SENSOR_ID_SWITCH1:     {Min: 0, Max: 1},
-	SENSOR_ID_SWITCH2:     {Min: 0, Max: 1},
-	SENSOR_ID_SWITCH3:     {Min: 0, Max: 1},
-	SENSOR_ID_SWITCH4:     {Min: 0, Max: 1},
-	SENSOR_ID_SWITCH5:     {Min: 0, Max: 1},
-	SENSOR_ID_SWITCH6:     {Min: 0, Max: 1},
-	SENSOR_ID_SWITCH7:     {Min: 0, Max: 1},
-	SENSOR_ID_SWITCH8:     {Min: 0, Max: 1},
-	SENSOR_ID_SWITCH9:     {Min: 0, Max: 1},
 	SENSOR_ID_PRESENCE1:   {Min: 0, Max: 1},
 	SENSOR_ID_PRESENCE2:   {Min: 0, Max: 1},
 	SENSOR_ID_PRESENCE3:   {Min: 0, Max: 1},
@@ -224,15 +139,6 @@ var SensorTypeNames = map[SensorType]string{
 	SENSOR_ID_VIBRATION:   "Vibration",
 	SENSOR_ID_STATE:       "State",
 	SENSOR_ID_BATTERY:     "Battery",
-	SENSOR_ID_SWITCH1:     "Switch 1",
-	SENSOR_ID_SWITCH2:     "Switch 2",
-	SENSOR_ID_SWITCH3:     "Switch 3",
-	SENSOR_ID_SWITCH4:     "Switch 4",
-	SENSOR_ID_SWITCH5:     "Switch 5",
-	SENSOR_ID_SWITCH6:     "Switch 6",
-	SENSOR_ID_SWITCH7:     "Switch 7",
-	SENSOR_ID_SWITCH8:     "Switch 8",
-	SENSOR_ID_SWITCH9:     "Switch 9",
 	SENSOR_ID_PRESENCE1:   "Presence 1",
 	SENSOR_ID_PRESENCE2:   "Presence 2",
 	SENSOR_ID_PRESENCE3:   "Presence 3",
@@ -292,15 +198,6 @@ var SensorNameToSensorType = map[string]SensorType{
 	"Vibration":                  SENSOR_ID_VIBRATION,
 	"State":                      SENSOR_ID_STATE,
 	"Battery":                    SENSOR_ID_BATTERY,
-	"Switch 1":                   SENSOR_ID_SWITCH1,
-	"Switch 2":                   SENSOR_ID_SWITCH2,
-	"Switch 3":                   SENSOR_ID_SWITCH3,
-	"Switch 4":                   SENSOR_ID_SWITCH4,
-	"Switch 5":                   SENSOR_ID_SWITCH5,
-	"Switch 6":                   SENSOR_ID_SWITCH6,
-	"Switch 7":                   SENSOR_ID_SWITCH7,
-	"Switch 8":                   SENSOR_ID_SWITCH8,
-	"Switch 9":                   SENSOR_ID_SWITCH9,
 	"Presence 1":                 SENSOR_ID_PRESENCE1,
 	"Presence 2":                 SENSOR_ID_PRESENCE2,
 	"Presence 3":                 SENSOR_ID_PRESENCE3,

@@ -18,8 +18,9 @@ const (
 type MessageType uint16
 
 const (
-	MessageTypeInvalid MessageType = iota
-	MessageTypeSensorData
+	MessageTypeInvalid      MessageType = iota
+	MessageTypeSensorData               // Sensor data from a device (readonly)
+	MessageTypeActuatorData             // Actuator data to a device (mutable)
 )
 
 var (
@@ -44,6 +45,12 @@ type MessageHeader struct {
 type SensorRecord struct {
 	SensorType SensorType // byte
 	Value      int32      // [3]byte
+}
+
+type ActuatorRecord struct { //
+	SensorType SensorType // [1]byte
+	Authority  uint16     // [2]byte
+	Value      int32      // [4]byte
 }
 
 type Message struct {
