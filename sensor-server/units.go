@@ -1,139 +1,5 @@
 package sensorserver
 
-const ()
-
-/*
-   typedef u8 unit_type_t;
-
-   enum unit_type_e
-   {
-       // Temperature (0–2)
-       UTemperature = 0,
-	   UCelcius	    = 1,
-       UFahrenheit  = 2,
-       UKelvin      = 3,
-
-       // Pressure (6–9)
-       UPressure   = 6,
-       UBar        = 7,
-       UPascal     = 8,
-       UAtmosphere = 9,
-
-       // Humidity (13)
-       UHumidity = 13,
-
-       // Speed & Acceleration (17–21)
-       UVelocity          = 17,
-       UKilometersPerHour = 18,
-       UMilesPerHour      = 19,
-       UAcceleration      = 20,
-       UGForce            = 21,
-
-       // Concentration (25–26)
-       UPpm     = 25,
-       UPpb     = 26,
-       UPercent = 27,
-
-       // Mass (30–36)
-       UKilograms  = 30,
-       UGrams      = 31,
-       UMilligrams = 32,
-       UMicrograms = 33,
-       UTons       = 34,
-       UPounds     = 35,
-       UOunces     = 36,
-
-       // Length & Distance (40–46)
-       UKilometers  = 40,
-       UMeters      = 41,
-       UCentimeters = 42,
-       UMillimeters = 43,
-       UMiles       = 44,
-       UFeet        = 45,
-       UInches      = 46,
-
-       // Time (50–55)
-       UHours        = 50,
-       UMinutes      = 51,
-       USeconds      = 52,
-       UMilliseconds = 53,
-       UMicroseconds = 54,
-       UNanoseconds  = 55,
-
-       // Volume (59–62)
-       ULiters      = 59,
-       UMilliliters = 60,
-       UCubicMeters = 61,
-       UGallons     = 62,
-
-       // Energy & Power (66–71)
-       UJoules       = 66,
-       UKiloJoules   = 67,
-       UWatts        = 68,
-       UKiloWatts    = 69,
-       UMegaWatts    = 70,
-       UKiloWattHour = 71,
-
-       // Data Size (75–79)
-       UBytes     = 75,
-       UKiloBytes = 76,
-       UMegaBytes = 77,
-       UGigaBytes = 78,
-       UTeraBytes = 79,
-
-       // Electrical (83–89)
-       UVolt        = 83,
-       UMilliVolt   = 84,
-       UAmpere      = 85,
-       UMilliAmpere = 86,
-       UOhm         = 87,
-       UFarad       = 88,
-       UHenry       = 89,
-       UdBm         = 90,  // Decibel-milliwatts (signal strength)
-
-       // Frequency (93–96)
-       UHertz     = 93,
-       UKiloHertz = 94,
-       UMegaHertz = 95,
-       UGigaHertz = 96,
-
-       // Angle (100–101)
-       UDegrees = 100,
-       URadians = 101,
-
-       // Logical / State Units (105–115)
-       UOnOff               = 105,
-       UOpenClose           = 106,
-       UTrueFalse           = 107,
-       UActiveInactive      = 108,
-       UEnabledDisabled     = 109,
-       UStartStop           = 110,
-       UAlarmNormal         = 111,
-       UFaultNormal         = 112,
-       UPresentAbsent       = 113,
-       UDetectedNotDetected = 114,
-
-       // Sound
-       UDecibels = 116,
-
-       // Light
-       ULux     = 120,
-       UUvIndex = 121,
-
-       // mg/m3, ug/m3
-       Uugm3 = 125,
-       Umgm3 = 126,
-
-       // Data
-       UBinaryData = 150,
-       UMacAddress = 151,
-
-       // Unknown / Undefined
-       UUnknown
-   };
-
-*/
-
 type UnitType uint8
 
 const (
@@ -254,10 +120,6 @@ const (
 	Uugm3 UnitType = 125
 	Umgm3 UnitType = 126
 
-	// Data
-	UBinaryData UnitType = 150
-	UMacAddress UnitType = 151
-
 	UUnknown UnitType = 255
 )
 
@@ -278,35 +140,16 @@ var SensorTypeUnits = map[SensorType]UnitType{
 	SENSOR_ID_PM025:       Uugm3,
 	SENSOR_ID_PM040:       Uugm3,
 	SENSOR_ID_PM100:       Uugm3,
-	SENSOR_ID_NOISE:       UDecibels,
-	SENSOR_ID_VIBRATION:   UHertz,
-	SENSOR_ID_STATE:       UOnOff,
+	SENSOR_ID_SOUND:       UDecibels,
+	SENSOR_ID_BINARY:      UOnOff,
+	SENSOR_ID_AMPLITUDE:   UPercent,
+	SENSOR_ID_DURATION:    UMilliseconds,
+	SENSOR_ID_FREQUENCY:   UHertz,
 	SENSOR_ID_BATTERY:     UPercent,
-	SENSOR_ID_PRESENCE1:   UPresentAbsent,
-	SENSOR_ID_PRESENCE2:   UPresentAbsent,
-	SENSOR_ID_PRESENCE3:   UPresentAbsent,
-	SENSOR_ID_DISTANCE1:   UPresentAbsent,
-	SENSOR_ID_DISTANCE2:   UPresentAbsent,
-	SENSOR_ID_DISTANCE3:   UPresentAbsent,
-	SENSOR_ID_POS1_X:      UCentimeters,
-	SENSOR_ID_POS1_Y:      UCentimeters,
-	SENSOR_ID_POS1_Z:      UCentimeters,
-	SENSOR_ID_POS2_X:      UCentimeters,
-	SENSOR_ID_POS2_Y:      UCentimeters,
-	SENSOR_ID_POS2_Z:      UCentimeters,
-	SENSOR_ID_POS3_X:      UCentimeters,
-	SENSOR_ID_POS3_Y:      UCentimeters,
-	SENSOR_ID_POS3_Z:      UCentimeters,
-	SENSOR_ID_RSSI:        UdBm,
-	SENSOR_ID_PERF1:       UMicroseconds,
-	SENSOR_ID_PERF2:       UMicroseconds,
-	SENSOR_ID_PERF3:       UMicroseconds,
 	SENSOR_ID_VOLTAGE:     UVolt,
 	SENSOR_ID_CURRENT:     UAmpere,
 	SENSOR_ID_POWER:       UKiloWatts,
 	SENSOR_ID_ENERGY:      UKiloWattHour,
-	SENSOR_ID_JSON:        UBinaryData,
-	SENSOR_ID_IMAGE:       UBinaryData,
 	SENSOR_ID_GAS_M3:      UCubicMeters,
 	SENSOR_ID_WATER_M3:    UCubicMeters,
 	SENSOR_ID_kWAh:        UKiloWattHour,
@@ -451,10 +294,6 @@ var UnitTypeToSymbolString = map[UnitType]string{
 	Uugm3: "µg/m³",
 	Umgm3: "mg/m³",
 
-	// Data
-	UBinaryData: "Binary Data",
-	UMacAddress: "MAC Address",
-
 	UUnknown: "?",
 }
 
@@ -540,6 +379,4 @@ var UnitTypeToString = map[UnitType]string{
 	UUvIndex:             "UV Index",
 	Uugm3:                "Micrograms per Cubic Meter (µg/m³)",
 	Umgm3:                "Milligrams per Cubic Meter (mg/m³)",
-	UBinaryData:          "Binary Data",
-	UMacAddress:          "MAC Address",
 }
