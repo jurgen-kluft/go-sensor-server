@@ -47,7 +47,7 @@ func (registry *ConfigRegistry) Reload(candidate *ConfigSnapshot) error {
 }
 
 type SensorDataWriter interface {
-	WriteSensorData(ctx context.Context, area AreaType, sensorType SensorType, timestamp int64, value int32) error
+	WriteSensorData(ctx context.Context, floor FloorType, room RoomType, sensorType SensorType, timestamp int64, value int32) error
 }
 
 type UnknownMessage struct {
@@ -62,7 +62,8 @@ type UnknownMessageWriter interface {
 
 type SensorObservation struct {
 	MAC        MACAddress
-	Area       AreaType
+	Floor      FloorType
+	Room       RoomType
 	Transport  Transport
 	SensorType SensorType
 	UnitType   UnitType
@@ -142,15 +143,15 @@ func (router *MessageRouter) Route(ctx context.Context, transport Transport, tim
 		}
 		if router.onSensorObservation != nil {
 			router.onSensorObservation(SensorObservation{
-				MAC: message.Header.MAC, Area: device.Area, Transport: transport,
+				MAC: message.Header.MAC, Floor: device.Floor, Room: device.Room, Transport: transport,
 				SensorType: record.SensorType, UnitType: sensor.Unit,
 				Timestamp: timestamp, Value: record.Value,
 			})
 		}
-		if err := router.dataWriter.WriteSensorData(ctx, device.Area, sensor.Type, timestamp, record.Value); err != nil {
+		if err := router.dataWriter.WriteSensorData(ctx, device.Floor, device.Room, sensor.Type, timestamp, record.Value); err != nil {
 			router.dataEngineFailures.Add(1)
 			router.recordsRejected.Add(1)
-			result = errors.Join(result, fmt.Errorf("write %s/%s sensor %d: %w", device.Area, sensor.Type, record.SensorType, err))
+			result = errors.Join(result, fmt.Errorf("write floor %d room %d sensor %d: %w", device.Floor, device.Room, record.SensorType, err))
 			continue
 		}
 		router.recordsAccepted.Add(1)

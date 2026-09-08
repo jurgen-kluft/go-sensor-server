@@ -16,7 +16,8 @@ func TestConfigPollerPublishesDeviceChange(t *testing.T) {
 		t.Fatalf("NewConfigPoller() error = %v", err)
 	}
 
-	updated := strings.Replace(validConfigJSON, "1st Living Room", "1st Kitchen", 1) + "\n"
+	updated := strings.Replace(validConfigJSON, `"floor":"first"`, `"floor":"kitchen"`, 1)
+	updated = strings.Replace(updated, `"room":"living"`, `"room":"kitchen"`, 1) + "\n"
 	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -26,8 +27,8 @@ func TestConfigPollerPublishesDeviceChange(t *testing.T) {
 	}
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, _ := registry.Snapshot().Device(mac)
-	if device.Area != AreaKitchen {
-		t.Fatalf("device area = %q, want 1st Kitchen", device.Area)
+	if device.Floor != FLOOR_FIRST || device.Room != ROOM_KITCHEN {
+		t.Fatalf("device floor/room = %d/%d, want 1st/ROOM_KITCHEN", device.Floor, device.Room)
 	}
 }
 
@@ -46,8 +47,8 @@ func TestConfigPollerKeepsSnapshotAfterInvalidReload(t *testing.T) {
 	}
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, _ := registry.Snapshot().Device(mac)
-	if device.Area != AreaLivingRoom {
-		t.Fatalf("device area = %q, want LivingRoom", device.Area)
+	if device.Floor != FLOOR_FIRST || device.Room != ROOM_LIVING {
+		t.Fatalf("device floor/room = %d/%d, want 1st/ROOM_LIVING", device.Floor, device.Room)
 	}
 	if reloaded, err := poller.Poll(); err != nil || reloaded {
 		t.Fatalf("unchanged Poll() = %v, %v", reloaded, err)

@@ -208,7 +208,7 @@ func ReplayQuarantine(ctx context.Context, writer *QuarantineWriter, registry *C
 				if !ok {
 					continue
 				}
-				if err := dataWriter.WriteSensorData(ctx, device.Area, sensor.Type, entry.Timestamp, record.Value); err != nil {
+				if err := dataWriter.WriteSensorData(ctx, device.Floor, device.Room, sensor.Type, entry.Timestamp, record.Value); err != nil {
 					return counters, fmt.Errorf("replay %q: %w", segment.path, err)
 				}
 				counters.RecordsWritten++

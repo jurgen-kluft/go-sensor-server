@@ -19,7 +19,7 @@ func TestMessageRouterRoutesKnownDeviceRecords(t *testing.T) {
 		t.Fatalf("writes = %d, want 1", len(dataWriter.writes))
 	}
 	write := dataWriter.writes[0]
-	if write.area != AreaLivingRoom || write.sensorType != SENSOR_ID_TEMPERATURE || write.timestamp != 1234 || write.value != 215 {
+	if write.floor != FLOOR_SECOND || write.room != ROOM_LIVING || write.sensorType != SENSOR_ID_TEMPERATURE || write.timestamp != 1234 || write.value != 215 {
 		t.Fatalf("write = %+v", write)
 	}
 }
@@ -39,7 +39,7 @@ func TestMessageRouterObservesOnlyKnownDeviceAndSensorRecords(t *testing.T) {
 		t.Fatalf("observations = %d, want 1", len(observations))
 	}
 	want := SensorObservation{
-		MAC: mac, Area: AreaLivingRoom, Transport: TransportUDP,
+		MAC: mac, Floor: FLOOR_SECOND, Room: ROOM_LIVING, Transport: TransportUDP,
 		SensorType: SENSOR_ID_TEMPERATURE, UnitType: UCelcius,
 		Timestamp: 1234, Value: 215,
 	}
@@ -101,7 +101,7 @@ func TestConfigRegistryReloadIsAtomicForReaders(t *testing.T) {
 		go func() {
 			defer waitGroup.Done()
 			device, ok := registry.Snapshot().Device(mac)
-			if !ok || (device.Area != AreaLivingRoom && device.Area != AreaKitchen) {
+			if !ok || (device.Floor != FLOOR_SECOND && device.Room != ROOM_LIVING && device.Room != ROOM_KITCHEN) {
 				t.Errorf("Device() = %+v, %v", device, ok)
 			}
 		}()
@@ -142,7 +142,8 @@ func testRoutedMessage(mac MACAddress, sensors []SensorRecord) Message {
 }
 
 type dataWrite struct {
-	area       AreaType
+	floor      FloorType
+	room       RoomType
 	sensorType SensorType
 	timestamp  int64
 	value      int32
@@ -152,8 +153,8 @@ type recordingDataWriter struct {
 	writes []dataWrite
 }
 
-func (writer *recordingDataWriter) WriteSensorData(_ context.Context, area AreaType, sensorType SensorType, timestamp int64, value int32) error {
-	writer.writes = append(writer.writes, dataWrite{area: area, sensorType: sensorType, timestamp: timestamp, value: value})
+func (writer *recordingDataWriter) WriteSensorData(_ context.Context, floor FloorType, room RoomType, sensorType SensorType, timestamp int64, value int32) error {
+	writer.writes = append(writer.writes, dataWrite{floor: floor, room: room, sensorType: sensorType, timestamp: timestamp, value: value})
 	return nil
 }
 

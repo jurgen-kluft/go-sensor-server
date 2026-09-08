@@ -27,7 +27,7 @@ func TestHandlerReportsHealthAndMonitoringData(t *testing.T) {
 	core, state := newHandlerTestDependencies(t)
 	mac := sensorserver.MACAddress{2, 0, 0, 0xab, 0xcd, 0xef}
 	state.OnSensorObservation(sensorserver.SensorObservation{
-		MAC: mac, Area: sensorserver.AreaLivingRoom, Transport: sensorserver.TransportUDP,
+		MAC: mac, Floor: sensorserver.FLOOR_SECOND, Room: sensorserver.ROOM_LIVING, Transport: sensorserver.TransportUDP,
 		SensorType: sensorserver.SENSOR_ID_BATTERY, UnitType: sensorserver.UCelcius, Timestamp: 1234, Value: 21,
 	})
 	handler := corsHandler(newHandler(context.Background(), core, state))
@@ -92,7 +92,7 @@ func TestSSEStreamReceivesSensorObservation(t *testing.T) {
 	}
 
 	state.OnSensorObservation(sensorserver.SensorObservation{
-		MAC: sensorserver.MACAddress{2, 0, 0, 0xab, 0xcd, 0xef}, Area: sensorserver.AreaLivingRoom,
+		MAC: sensorserver.MACAddress{2, 0, 0, 0xab, 0xcd, 0xef}, Floor: sensorserver.FLOOR_SECOND, Room: sensorserver.ROOM_LIVING,
 		Transport: sensorserver.TransportUDP, SensorType: sensorserver.SENSOR_ID_TEMPERATURE,
 		UnitType: sensorserver.UCelcius, Timestamp: 1234, Value: 21,
 	})

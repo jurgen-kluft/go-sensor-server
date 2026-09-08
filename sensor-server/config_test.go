@@ -12,7 +12,7 @@ const validConfigJSON = `{
   "udp_address": ":9001",
   "data_root": "/tmp/sensors",
   "quarantine_root": "/tmp/quarantine",
-  "devices": [{"mac":"02:00:00:ab:cd:ef","area":"1st Living Room"}],
+  "devices": [{"mac":"02:00:00:ab:cd:ef","floor":"first","room":"living"}],
 	"sensors": [{"id":1,"type":"Temperature","unit":"Celsius"}],
   "data_stream": {},
   "network": {},
@@ -37,7 +37,7 @@ func TestLoadConfigAppliesDefaultsAndBuildsLookups(t *testing.T) {
 
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, ok := snapshot.Device(mac)
-	if !ok || device.Area != AreaLivingRoom {
+	if !ok || device.Floor != 1 || device.Room != ROOM_LIVING {
 		t.Fatalf("Device() = %+v, %v", device, ok)
 	}
 	sensor, ok := snapshot.Sensor(1)
@@ -52,11 +52,12 @@ func TestConfigSnapshotDoesNotExposeMutableSlices(t *testing.T) {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	config := snapshot.Config()
-	config.Devices[0].Area = "Changed"
+	config.Devices[0].Floor = "second"
+	config.Devices[0].Room = "kitchen"
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, _ := snapshot.Device(mac)
-	if device.Area != AreaLivingRoom {
-		t.Fatalf("snapshot device area = %q, want 1st Living Room", device.Area)
+	if device.Floor != 1 || device.Room != ROOM_LIVING {
+		t.Fatalf("snapshot device floor/room = %d/%d, want 1/ROOM_LIVING", device.Floor, device.Room)
 	}
 }
 

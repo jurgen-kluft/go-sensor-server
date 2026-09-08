@@ -109,15 +109,16 @@ func newHandler(serverContext context.Context, core CoreServer, state *Monitorin
 	})
 	mux.HandleFunc("/api/v1/rooms/", func(writer http.ResponseWriter, request *http.Request) {
 		parts := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
-		if len(parts) != 5 || parts[4] != "devices" {
+		if len(parts) != 6 || parts[5] != "devices" {
 			http.NotFound(writer, request)
 			return
 		}
-		room := parts[3]
+		floor := parts[3]
+		room := parts[4]
 		devices := state.Devices(core.Registry().Snapshot())
 		filtered := make([]DeviceSnapshot, 0)
 		for _, device := range devices {
-			if device.Area == room {
+			if device.Floor == floor && device.Room == room {
 				filtered = append(filtered, device)
 			}
 		}
@@ -228,7 +229,7 @@ func buildStatus(core CoreServer) StatusResponse {
 	}
 	for _, stream := range counters.DataStreams {
 		if stream.Counters.Errors > 0 || stream.Counters.Dropped > 0 {
-			issues = append(issues, fmt.Sprintf("data stream %s/%s has write errors or dropped samples", stream.Area, stream.SensorType))
+			issues = append(issues, fmt.Sprintf("data stream %s/%s/%s has write errors or dropped samples", stream.Floor, stream.Room, stream.SensorType))
 		}
 	}
 	sort.Strings(issues)

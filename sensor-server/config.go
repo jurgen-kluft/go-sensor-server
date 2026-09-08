@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 )
 
 const (
@@ -45,8 +44,9 @@ func (duration Duration) Value() time.Duration {
 }
 
 type DeviceConfig struct {
-	MAC  string `json:"mac"`
-	Area string `json:"area"`
+	MAC   string `json:"mac"`
+	Floor string `json:"floor"`
+	Room  string `json:"room"`
 }
 
 type SensorConfig struct {
@@ -90,8 +90,9 @@ type Config struct {
 }
 
 type Device struct {
-	MAC  MACAddress
-	Area AreaType
+	MAC   MACAddress
+	Floor FloorType
+	Room  RoomType
 }
 
 type SensorDefinition struct {
@@ -133,8 +134,9 @@ func NewConfigSnapshot(config Config) (*ConfigSnapshot, error) {
 	}
 	for _, configured := range config.Devices {
 		mac, _ := ParseMACAddress(configured.MAC)
-		areaType := AreaTypeFromString(configured.Area)
-		snapshot.devices[mac] = Device{MAC: mac, Area: areaType}
+		floorType := FloorTypeFromString(configured.Floor)
+		roomType := RoomTypeFromString(configured.Room)
+		snapshot.devices[mac] = Device{MAC: mac, Floor: floorType, Room: roomType}
 	}
 	for _, configured := range config.Sensors {
 		unit := UUnknown
@@ -266,11 +268,11 @@ func validateConfig(config Config) error {
 			return invalidConfig("devices[%d].mac: duplicate MAC %q", index, device.MAC)
 		}
 		devices[mac] = struct{}{}
-		if err := validateName(device.Area); err != nil {
-			return invalidConfig("devices[%d].area: %v", index, err)
+		if FloorTypeFromString(device.Floor) == FLOOR_INVALID {
+			return invalidConfig("devices[%d].floor %q: unknown floor", index, device.Floor)
 		}
-		if AreaTypeFromString(device.Area) == AreaUnknown {
-			return invalidConfig("devices[%d].area %q: unknown area", index, device.Area)
+		if RoomTypeFromString(device.Room) == ROOM_INVALID {
+			return invalidConfig("devices[%d].room %q: unknown room", index, device.Room)
 		}
 	}
 
@@ -372,21 +374,6 @@ func validateRoot(field, value string) error {
 	}
 	if filepath.Clean(value) == "." {
 		return invalidConfig("%s must identify a directory", field)
-	}
-	return nil
-}
-
-func validateName(value string) error {
-	if value == "" || strings.TrimSpace(value) != value {
-		return errors.New("name is empty or has surrounding whitespace")
-	}
-	if value == "." || value == ".." || strings.ContainsAny(value, `/\\`) {
-		return errors.New("name contains a path component")
-	}
-	for _, character := range value {
-		if unicode.IsControl(character) {
-			return errors.New("name contains a control character")
-		}
 	}
 	return nil
 }

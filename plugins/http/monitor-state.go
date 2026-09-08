@@ -21,7 +21,8 @@ type SensorSnapshot struct {
 
 type DeviceSnapshot struct {
 	MAC             string           `json:"mac"`
-	Area            string           `json:"area"`
+	Floor           string           `json:"floor"`
+	Room            string           `json:"room"`
 	Transport       string           `json:"transport"`
 	Connected       bool             `json:"connected"`
 	LastSeenAt      int64            `json:"last_seen_at_us,omitempty"`
@@ -39,7 +40,8 @@ type RoomSnapshot struct {
 
 type SensorObservationEvent struct {
 	MAC        string `json:"mac"`
-	Area       string `json:"area"`
+	Floor      string `json:"floor"`
+	Room       string `json:"room"`
 	Transport  string `json:"transport"`
 	SensorType string `json:"sensor_type"`
 	Unit       string `json:"unit_type"`
@@ -63,7 +65,8 @@ type sensorState struct {
 
 type deviceState struct {
 	mac          sensorserver.MACAddress
-	area         string
+	floor        string
+	room         string
 	transport    sensorserver.Transport
 	connectionID uint64
 	connected    bool
@@ -91,7 +94,7 @@ func NewMonitoringState(config Config) (*MonitoringState, error) {
 
 func (state *MonitoringState) OnSensorObservation(observation sensorserver.SensorObservation) {
 	state.mu.Lock()
-	device := state.device(observation.MAC, observation.Area.String())
+	device := state.device(observation.MAC, observation.Floor.String(), observation.Room.String())
 	device.transport = observation.Transport
 	device.lastSeenAt = observation.Timestamp
 	sensor := device.sensors[observation.SensorType]
@@ -107,7 +110,7 @@ func (state *MonitoringState) OnSensorObservation(observation sensorserver.Senso
 	sensor.history.Append(sensor.current)
 	sensor.warning = state.thresholdWarning(sensorserver.SensorType(observation.SensorType), observation.Value)
 	event := SensorObservationEvent{
-		MAC: formatMAC(observation.MAC), Area: observation.Area.String(),
+		MAC: formatMAC(observation.MAC), Floor: observation.Floor.String(), Room: observation.Room.String(),
 		Transport: transportName(observation.Transport), SensorType: observation.SensorType.String(),
 		Unit:   observation.UnitType.String(),
 		Sample: sensor.current, Warning: sensor.warning,
@@ -118,7 +121,7 @@ func (state *MonitoringState) OnSensorObservation(observation sensorserver.Senso
 
 func (state *MonitoringState) OnDeviceConnected(connectionID uint64, mac sensorserver.MACAddress) {
 	state.mu.Lock()
-	device := state.device(mac, "")
+	device := state.device(mac, "", "")
 	changed := !device.connected
 	device.connectionID = connectionID
 	device.connected = true
@@ -155,10 +158,10 @@ func (state *MonitoringState) Rooms(snapshot *sensorserver.ConfigSnapshot) []Roo
 	devices := state.Devices(snapshot)
 	rooms := make(map[string]*RoomSnapshot)
 	for _, device := range devices {
-		room := rooms[device.Area]
+		room := rooms[device.Room]
 		if room == nil {
-			room = &RoomSnapshot{Name: device.Area}
-			rooms[device.Area] = room
+			room = &RoomSnapshot{Name: device.Room}
+			rooms[device.Room] = room
 		}
 		room.DeviceCount++
 		if device.Connected {
@@ -181,7 +184,7 @@ func (state *MonitoringState) Devices(snapshot *sensorserver.ConfigSnapshot) []D
 	result := make([]DeviceSnapshot, 0, len(configured.Devices))
 	for _, configuredDevice := range configured.Devices {
 		mac, _ := sensorserver.ParseMACAddress(configuredDevice.MAC)
-		result = append(result, state.snapshotDevice(snapshot, mac, configuredDevice.Area, false))
+		result = append(result, state.snapshotDevice(snapshot, mac, configuredDevice.Floor, configuredDevice.Room, false))
 	}
 	sort.Slice(result, func(left, right int) bool { return result[left].MAC < result[right].MAC })
 	return result
@@ -194,8 +197,9 @@ func (state *MonitoringState) Device(snapshot *sensorserver.ConfigSnapshot, mac 
 	}
 	state.mu.RLock()
 	defer state.mu.RUnlock()
-	areaName := configuredDevice.Area.String()
-	return state.snapshotDevice(snapshot, mac, areaName, true), true
+	floorName := configuredDevice.Floor.String()
+	roomName := configuredDevice.Room.String()
+	return state.snapshotDevice(snapshot, mac, floorName, roomName, true), true
 }
 
 func (state *MonitoringState) Readings(mac sensorserver.MACAddress, sensorID sensorserver.SensorType) ([]Sample, bool) {
@@ -212,14 +216,17 @@ func (state *MonitoringState) Readings(mac sensorserver.MACAddress, sensorID sen
 	return sensor.history.Snapshot(), true
 }
 
-func (state *MonitoringState) device(mac sensorserver.MACAddress, area string) *deviceState {
+func (state *MonitoringState) device(mac sensorserver.MACAddress, floor string, room string) *deviceState {
 	device := state.devices[mac]
 	if device == nil {
 		device = &deviceState{mac: mac, sensors: make(map[sensorserver.SensorType]*sensorState)}
 		state.devices[mac] = device
 	}
-	if area != "" {
-		device.area = area
+	if floor != "" {
+		device.floor = floor
+	}
+	if room != "" {
+		device.room = room
 	}
 	return device
 }
@@ -239,8 +246,8 @@ func (state *MonitoringState) thresholdWarning(sensorType sensorserver.SensorTyp
 	return ""
 }
 
-func (state *MonitoringState) snapshotDevice(snapshot *sensorserver.ConfigSnapshot, mac sensorserver.MACAddress, area string, includeSensors bool) DeviceSnapshot {
-	result := DeviceSnapshot{MAC: formatMAC(mac), Area: area, Warnings: []string{}}
+func (state *MonitoringState) snapshotDevice(snapshot *sensorserver.ConfigSnapshot, mac sensorserver.MACAddress, floor string, room string, includeSensors bool) DeviceSnapshot {
+	result := DeviceSnapshot{MAC: formatMAC(mac), Floor: floor, Room: room, Warnings: []string{}}
 	device := state.devices[mac]
 	if device != nil {
 		result.Transport = transportName(device.transport)

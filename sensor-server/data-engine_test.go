@@ -12,7 +12,7 @@ import (
 func TestDataEngineCreatesOneStreamForConcurrentWrites(t *testing.T) {
 	var creations atomic.Int64
 	writers := make(chan *recordingWriter, 1)
-	engine, err := NewDataEngine(func(area AreaType, sensorType SensorType) (*DataStream, error) {
+	engine, err := NewDataEngine(func(floor FloorType, room RoomType, sensorType SensorType) (*DataStream, error) {
 		creations.Add(1)
 		writer := &recordingWriter{}
 		writers <- writer
@@ -28,7 +28,7 @@ func TestDataEngineCreatesOneStreamForConcurrentWrites(t *testing.T) {
 		waitGroup.Add(1)
 		go func(value int) {
 			defer waitGroup.Done()
-			if err := engine.WriteSensorData(context.Background(), AreaLivingRoom, SENSOR_ID_TEMPERATURE, int64(value), int32(value)); err != nil {
+			if err := engine.WriteSensorData(context.Background(), FLOOR_FIRST, ROOM_LIVING, SENSOR_ID_TEMPERATURE, int64(value), int32(value)); err != nil {
 				t.Errorf("WriteSensorData() error = %v", err)
 			}
 		}(index)
@@ -48,7 +48,7 @@ func TestDataEngineCreatesOneStreamForConcurrentWrites(t *testing.T) {
 }
 
 func TestDataEngineSeparatesStreamKeys(t *testing.T) {
-	engine, err := NewDataEngine(func(area AreaType, sensorType SensorType) (*DataStream, error) {
+	engine, err := NewDataEngine(func(floor FloorType, room RoomType, sensorType SensorType) (*DataStream, error) {
 		return newTestDataStream(t, &recordingWriter{}, 4)
 	})
 	if err != nil {
@@ -56,13 +56,15 @@ func TestDataEngineSeparatesStreamKeys(t *testing.T) {
 	}
 	defer engine.Close()
 
-	areas := []AreaType{AreaKitchen, AreaLivingRoom, AreaBedroom}
+	floors := []FloorType{FLOOR_BASEMENT, FLOOR_FIRST, FLOOR_SECOND, FLOOR_THIRD}
+	rooms := []RoomType{ROOM_KITCHEN, ROOM_LIVING, ROOM_BEDROOM1, ROOM_BEDROOM2}
 	sensors := []SensorType{SENSOR_ID_TEMPERATURE, SENSOR_ID_HUMIDITY, SENSOR_ID_PRESSURE}
 
-	for i, area := range areas {
+	for i, floor := range floors {
+		room := rooms[i%len(rooms)]
 		sensor := sensors[i%len(sensors)]
-		if err := engine.WriteSensorData(context.Background(), area, sensor, 1, 1); err != nil {
-			t.Fatalf("WriteSensorData(%v, %v) error = %v", area, sensor, err)
+		if err := engine.WriteSensorData(context.Background(), floor, room, sensor, 1, 1); err != nil {
+			t.Fatalf("WriteSensorData(%v, %v, %v) error = %v", floor, room, sensor, err)
 		}
 	}
 	if engine.StreamCount() != 3 {
@@ -71,7 +73,7 @@ func TestDataEngineSeparatesStreamKeys(t *testing.T) {
 }
 
 func TestDataEngineRejectsWritesAfterClose(t *testing.T) {
-	engine, err := NewDataEngine(func(area AreaType, sensorType SensorType) (*DataStream, error) {
+	engine, err := NewDataEngine(func(floor FloorType, room RoomType, sensorType SensorType) (*DataStream, error) {
 		return newTestDataStream(t, &recordingWriter{}, 1)
 	})
 	if err != nil {
@@ -80,7 +82,7 @@ func TestDataEngineRejectsWritesAfterClose(t *testing.T) {
 	if err := engine.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	if err := engine.WriteSensorData(context.Background(), AreaLivingRoom, SENSOR_ID_TEMPERATURE, 1, 1); !errors.Is(err, ErrDataEngineClosed) {
+	if err := engine.WriteSensorData(context.Background(), FLOOR_SECOND, ROOM_LIVING, SENSOR_ID_TEMPERATURE, 1, 1); !errors.Is(err, ErrDataEngineClosed) {
 		t.Fatalf("WriteSensorData() error = %v, want ErrDataEngineClosed", err)
 	}
 }

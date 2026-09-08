@@ -12,7 +12,7 @@ import (
 
 var ErrDataEngineClosed = errors.New("data engine is closed")
 
-type DataStreamFactory func(area AreaType, sensorType SensorType) (*DataStream, error)
+type DataStreamFactory func(floor FloorType, room RoomType, sensorType SensorType) (*DataStream, error)
 
 type DataEngine struct {
 	factory DataStreamFactory
@@ -22,12 +22,14 @@ type DataEngine struct {
 }
 
 type dataStreamKey struct {
-	area       AreaType
+	floor      FloorType
+	room       RoomType
 	sensorType SensorType
 }
 
 type DataStreamSnapshot struct {
-	Area       AreaType
+	Floor      FloorType
+	Room       RoomType
 	SensorType SensorType
 	Counters   DataStreamCounters
 }
@@ -40,8 +42,8 @@ func NewDataEngine(factory DataStreamFactory) (*DataEngine, error) {
 }
 
 func NewFileDataStreamFactory(fileSystem FileSystem, clock Clock, dataRoot string, config DataStreamConfig, onError func(error)) DataStreamFactory {
-	return func(area AreaType, sensorType SensorType) (*DataStream, error) {
-		fileOptions := DefaultDataFileOptions(filepath.Join(dataRoot, fmt.Sprintf("%04x", area), fmt.Sprintf("%04x", sensorType)))
+	return func(floor FloorType, room RoomType, sensorType SensorType) (*DataStream, error) {
+		fileOptions := DefaultDataFileOptions(filepath.Join(dataRoot, fmt.Sprintf("%04x", floor), fmt.Sprintf("%04x", room), fmt.Sprintf("%04x", sensorType)))
 		fileOptions.BufferSize = config.WriteBufferSize
 		fileOptions.RotationSize = config.RotationSize
 		writer, err := OpenDataFile(fileSystem, fileOptions)
@@ -65,11 +67,11 @@ func NewFileDataStreamFactory(fileSystem FileSystem, clock Clock, dataRoot strin
 	}
 }
 
-func (engine *DataEngine) WriteSensorData(ctx context.Context, area AreaType, sensorType SensorType, timestamp int64, value int32) error {
+func (engine *DataEngine) WriteSensorData(ctx context.Context, floor FloorType, room RoomType, sensorType SensorType, timestamp int64, value int32) error {
 	if engine.closed.Load() {
 		return ErrDataEngineClosed
 	}
-	stream, err := engine.stream(area, sensorType)
+	stream, err := engine.stream(floor, room, sensorType)
 	if err != nil {
 		return err
 	}
@@ -106,20 +108,23 @@ func (engine *DataEngine) Counters() []DataStreamSnapshot {
 	snapshots := make([]DataStreamSnapshot, 0, len(engine.streams))
 	for key, stream := range engine.streams {
 		snapshots = append(snapshots, DataStreamSnapshot{
-			Area: key.area, SensorType: key.sensorType, Counters: stream.Counters(),
+			Floor: key.floor, Room: key.room, SensorType: key.sensorType, Counters: stream.Counters(),
 		})
 	}
 	sort.Slice(snapshots, func(left, right int) bool {
-		if snapshots[left].Area != snapshots[right].Area {
-			return snapshots[left].Area < snapshots[right].Area
+		if snapshots[left].Floor != snapshots[right].Floor {
+			return snapshots[left].Floor < snapshots[right].Floor
+		}
+		if snapshots[left].Room != snapshots[right].Room {
+			return snapshots[left].Room < snapshots[right].Room
 		}
 		return snapshots[left].SensorType < snapshots[right].SensorType
 	})
 	return snapshots
 }
 
-func (engine *DataEngine) stream(area AreaType, sensorType SensorType) (*DataStream, error) {
-	key := dataStreamKey{area: area, sensorType: sensorType}
+func (engine *DataEngine) stream(floor FloorType, room RoomType, sensorType SensorType) (*DataStream, error) {
+	key := dataStreamKey{floor: floor, room: room, sensorType: sensorType}
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
 	if engine.closed.Load() {
@@ -128,9 +133,9 @@ func (engine *DataEngine) stream(area AreaType, sensorType SensorType) (*DataStr
 	if stream := engine.streams[key]; stream != nil {
 		return stream, nil
 	}
-	stream, err := engine.factory(area, sensorType)
+	stream, err := engine.factory(floor, room, sensorType)
 	if err != nil {
-		return nil, fmt.Errorf("create data stream for %s/%s: %w", area, sensorType, err)
+		return nil, fmt.Errorf("create data stream for %s/%s/%s: %w", floor, room, sensorType, err)
 	}
 	engine.streams[key] = stream
 	return stream, nil
