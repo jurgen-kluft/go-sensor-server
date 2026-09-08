@@ -91,7 +91,7 @@ func testSnapshot(t *testing.T) *sensorserver.ConfigSnapshot {
 	const config = `{
 		"tcp_address": ":9000", "udp_address": ":9001",
 		"data_root": "data", "quarantine_root": "quarantine",
-		"devices": [{"mac":"02:00:00:ab:cd:ef", "area":"1st Living Room"}],
+		"devices": [{"mac":"02:00:00:ab:cd:ef", "floor":"second", "room":"living"}],
 		"sensors": [{"id":1, "type":"Temperature", "unit":"Celsius"}],
 		"data_stream": {}, "network": {}, "logging": {}, "shutdown_deadline":"30s"
 	}`

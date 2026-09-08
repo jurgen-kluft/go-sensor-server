@@ -54,7 +54,7 @@ func RoomTypeFromString(s string) RoomType {
 	if roomType, ok := roomNameToType[s]; ok {
 		return roomType
 	}
-	return ROOM_COUNT // Unknown room type
+	return ROOM_INVALID // Unknown room type
 }
 
 type FloorType uint8
@@ -93,7 +93,7 @@ func FloorTypeFromString(s string) FloorType {
 	if floorType, ok := floorNameToType[s]; ok {
 		return floorType
 	}
-	return FLOOR_COUNT // Unknown floor type
+	return FLOOR_INVALID // Unknown floor type
 }
 
 type ContactType uint8

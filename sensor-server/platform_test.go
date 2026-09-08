@@ -11,7 +11,7 @@ import (
 
 func TestOSFileSystem(t *testing.T) {
 	fileSystem := OSFileSystem{}
-	directory := filepath.Join(t.TempDir(), "area", "sensor")
+	directory := filepath.Join(t.TempDir(), "floor", "sensor")
 	if err := fileSystem.MkdirAll(directory, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}

@@ -31,7 +31,7 @@ func TestServerRoutesTCPAndUDPAndDrainsOnShutdown(t *testing.T) {
   "udp_address": %q,
   "data_root": %q,
   "quarantine_root": %q,
-  "devices": [{"mac":"02:00:00:ab:cd:ef","area":"LivingRoom"}],
+  "devices": [{"mac":"02:00:00:ab:cd:ef","floor":"second","room":"living"}],
   "sensors": [{"id":1,"type":"Temperature","unit":"Celsius"}],
 	"data_stream": {"flush_interval":"1m"},
   "network": {},
@@ -77,7 +77,12 @@ func TestServerRoutesTCPAndUDPAndDrainsOnShutdown(t *testing.T) {
 	if len(counters.DataStreams) != 1 || counters.DataStreams[0].Counters.Written != 2 || counters.DataStreams[0].Counters.BytesWritten != 2*uint64(SensorDataRecordSize) {
 		t.Fatalf("data stream counters = %+v", counters.DataStreams)
 	}
-	data, err := os.ReadFile(filepath.Join(directory, "data", "317374204c6976696e6720526f6f6d", "54656d7065726174757265", "00000001.dat"))
+	// Stream directories use hex-encoded floor, room, and sensor type names.
+	data, err := os.ReadFile(filepath.Join(directory, "data",
+		fmt.Sprintf("%04x", FLOOR_SECOND),
+		fmt.Sprintf("%04x", ROOM_LIVING),
+		fmt.Sprintf("%04x", SENSOR_ID_TEMPERATURE),
+		"00000001.dat"))
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -109,7 +114,7 @@ func TestServerHandles100MixedSenders(t *testing.T) {
 	config := fmt.Sprintf(`{
   "tcp_address": %q, "udp_address": %q,
   "data_root": %q, "quarantine_root": %q,
-  "devices": [{"mac":"02:00:00:ab:cd:ef","area":"LivingRoom"}],
+  "devices": [{"mac":"02:00:00:ab:cd:ef","floor":"second","room":"living"}],
   "sensors": [{"id":1,"type":"Temperature","unit":"Celsius"}],
   "data_stream": {"queue_capacity":512}, "network": {}, "logging": {}
 }`, tcpListener.Addr().String(), udpConnection.LocalAddr().String(), filepath.Join(directory, "data"), filepath.Join(directory, "quarantine"))

@@ -3,6 +3,8 @@ package sensorserver
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -67,8 +69,44 @@ func TestDataEngineSeparatesStreamKeys(t *testing.T) {
 			t.Fatalf("WriteSensorData(%v, %v, %v) error = %v", floor, room, sensor, err)
 		}
 	}
-	if engine.StreamCount() != 3 {
-		t.Fatalf("StreamCount() = %d, want 3", engine.StreamCount())
+	if engine.StreamCount() != 4 {
+		t.Fatalf("StreamCount() = %d, want 4", engine.StreamCount())
+	}
+}
+
+func TestNewFileDataStreamFactoryUsesEncodedStreamPath(t *testing.T) {
+	directory := t.TempDir()
+	factory := NewFileDataStreamFactory(OSFileSystem{}, SystemClock{}, directory, DataStreamConfig{
+		QueueCapacity:   1,
+		EnqueueWait:     Duration(time.Second),
+		RetryCount:      1,
+		InitialBackoff:  Duration(time.Millisecond),
+		MaximumBackoff:  Duration(time.Millisecond),
+		WriteBufferSize: DefaultWriteBufferSize,
+		FlushInterval:   Duration(time.Minute),
+		RotationSize:    DefaultRotationSize,
+	}, nil)
+	stream, err := factory(FLOOR_SECOND, ROOM_LIVING, SENSOR_ID_TEMPERATURE)
+	if err != nil {
+		t.Fatalf("factory() error = %v", err)
+	}
+	if err := stream.Write(context.Background(), SensorData{Timestamp: 1, Value: 2}); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(directory,
+		"7365636f6e64",
+		"6c6976696e67",
+		"54656d7065726174757265",
+		"00000001.dat"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if int64(len(data)) != SensorDataRecordSize {
+		t.Fatalf("data size = %d, want %d", len(data), SensorDataRecordSize)
 	}
 }
 

@@ -16,7 +16,7 @@ func TestConfigPollerPublishesDeviceChange(t *testing.T) {
 		t.Fatalf("NewConfigPoller() error = %v", err)
 	}
 
-	updated := strings.Replace(validConfigJSON, `"floor":"first"`, `"floor":"kitchen"`, 1)
+	updated := strings.Replace(validConfigJSON, `"floor":"second"`, `"floor":"first"`, 1)
 	updated = strings.Replace(updated, `"room":"living"`, `"room":"kitchen"`, 1) + "\n"
 	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -47,8 +47,8 @@ func TestConfigPollerKeepsSnapshotAfterInvalidReload(t *testing.T) {
 	}
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, _ := registry.Snapshot().Device(mac)
-	if device.Floor != FLOOR_FIRST || device.Room != ROOM_LIVING {
-		t.Fatalf("device floor/room = %d/%d, want 1st/ROOM_LIVING", device.Floor, device.Room)
+	if device.Floor != FLOOR_SECOND || device.Room != ROOM_LIVING {
+		t.Fatalf("device floor/room = %d/%d, want 2nd/ROOM_LIVING", device.Floor, device.Room)
 	}
 	if reloaded, err := poller.Poll(); err != nil || reloaded {
 		t.Fatalf("unchanged Poll() = %v, %v", reloaded, err)

@@ -12,7 +12,7 @@ const validConfigJSON = `{
   "udp_address": ":9001",
   "data_root": "/tmp/sensors",
   "quarantine_root": "/tmp/quarantine",
-  "devices": [{"mac":"02:00:00:ab:cd:ef","floor":"first","room":"living"}],
+  "devices": [{"mac":"02:00:00:ab:cd:ef","floor":"second","room":"living"}],
 	"sensors": [{"id":1,"type":"Temperature","unit":"Celsius"}],
   "data_stream": {},
   "network": {},
@@ -37,7 +37,7 @@ func TestLoadConfigAppliesDefaultsAndBuildsLookups(t *testing.T) {
 
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, ok := snapshot.Device(mac)
-	if !ok || device.Floor != 1 || device.Room != ROOM_LIVING {
+	if !ok || device.Floor != FLOOR_SECOND || device.Room != ROOM_LIVING {
 		t.Fatalf("Device() = %+v, %v", device, ok)
 	}
 	sensor, ok := snapshot.Sensor(1)
@@ -56,8 +56,8 @@ func TestConfigSnapshotDoesNotExposeMutableSlices(t *testing.T) {
 	config.Devices[0].Room = "kitchen"
 	mac, _ := ParseMACAddress("02:00:00:ab:cd:ef")
 	device, _ := snapshot.Device(mac)
-	if device.Floor != 1 || device.Room != ROOM_LIVING {
-		t.Fatalf("snapshot device floor/room = %d/%d, want 1/ROOM_LIVING", device.Floor, device.Room)
+	if device.Floor != FLOOR_SECOND || device.Room != ROOM_LIVING {
+		t.Fatalf("snapshot device floor/room = %d/%d, want 2nd/ROOM_LIVING", device.Floor, device.Room)
 	}
 }
 
@@ -68,8 +68,9 @@ func TestLoadConfigRejectsInvalidInput(t *testing.T) {
 		new  string
 	}{
 		{name: "unknown field", old: `"logging": {}`, new: `"unknown": true, "logging": {}`},
-		{name: "duplicate MAC", old: `"devices": [`, new: `"devices": [{"mac":"02:00:00:ab:cd:ef","area":"1st Kitchen"},`},
-		{name: "unknown area", old: `"area":"1st Living Room"`, new: `"area":"Unknown Room"`},
+		{name: "duplicate MAC", old: `"devices": [`, new: `"devices": [{"mac":"02:00:00:ab:cd:ef","floor":"first","room":"kitchen"},`},
+		{name: "unknown floor", old: `"floor":"second"`, new: `"floor":"eight"`},
+		{name: "unknown room", old: `"room":"living"`, new: `"room":"closet"`},
 		{name: "invalid port", old: `":9000"`, new: `":0"`},
 	}
 

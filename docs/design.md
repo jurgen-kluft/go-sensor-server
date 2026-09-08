@@ -16,14 +16,14 @@ wire.
 ## 2. Terminology
 
 * **Device**: An ESP32 identified by its six-byte MAC address.
-* **Area**: A room or other location to which one or more devices belong.
+* **Location**: A `(floor, room)` pair to which one or more devices belong.
 * **Sensor definition**: A configured sensor type, and unit.
-* **Data stream**: The writer for one `(area, sensor type)` pair.
+* **Data stream**: The writer for one `(floor, room, sensor type)` tuple.
 * **Known device**: A MAC address present in the current configuration.
 * **Unknown device**: A MAC address absent from the current configuration.
 * **Quarantine**: Durable storage for valid messages from unknown devices.
 
-Multiple devices in one area may report the same sensor type. Their readings
+Multiple devices in one location may report the same sensor type. Their readings
 are intentionally consolidated into the same data stream and file sequence.
 
 An optional monitoring plugin exists under `plugins/http` . Dependency flows
@@ -35,7 +35,7 @@ root; the core server neither imports nor manages HTTP.
 The core server can publish generic observations to callbacks supplied at
 startup:
 
-* A validated known-device sensor observation, including MAC, area, transport, 
+* A validated known-device sensor observation, including MAC, floor, room, transport,
   sensor definition, server timestamp, and raw value.
 * Successful binding of a TCP connection ID to a device MAC.
 * Disconnection of a bound TCP connection ID and MAC.
@@ -66,7 +66,7 @@ The server loads a JSON configuration file containing:
 * UDP listen address and port.
 * Sensor data root directory.
 * Quarantine directory.
-* Device definitions containing a unique MAC address and area name.
+* Device definitions containing a unique MAC address, floor, and room.
 * Sensor definitions containing a unique sensor ID, type, and unit.
 * Data stream queue, retry, flush, and rotation settings.
 * Network connection limits and timeout settings.
@@ -88,18 +88,16 @@ Validation must reject:
 * Duplicate sensor IDs.
 * Invalid MAC address representations.
 * Ports outside the valid range.
-* Empty or unsafe area and sensor type names.
+* Unknown floor, room, sensor type, or unit names.
 * Paths that escape the configured storage roots after cleaning.
 * Queue, timeout, retry, or rotation values outside supported ranges.
 
-Area and sensor type names are logical identifiers, not arbitrary paths. The
-configuration package must normalize or reject path separators, `.` and `..` , 
-control characters, and platform-specific unsafe names before they reach the
-storage package.
+Floor, room, sensor type, and unit names are canonical identifiers resolved to
+typed values during configuration loading. They are not arbitrary storage paths.
 
 ### 3.1 Live Reload
 
-A live reload may atomically replace only the MAC-to-area device registry.
+A live reload may atomically replace only the MAC-to-location device registry.
 Existing requests use either the old or new immutable registry snapshot; they
 must never observe a partially updated registry.
 
@@ -255,15 +253,14 @@ For a known MAC, each sensor record is resolved through the sensor registry and
 pushed to the Data Engine using:
 
 ```go
-WriteSensorData(area, sensorType string, timestamp int64, value int32) error
+WriteSensorData(ctx context.Context, floor FloorType, room RoomType, sensorType SensorType, timestamp int64, value int32) error
 ```
 
-The final API may use typed identifiers, but it must carry the same information
-and report whether the record was accepted.
+The API reports whether the record was accepted.
 
 For an unknown MAC, the complete valid message and its server timestamp are
 written to quarantine. Unknown-device messages must not be written to normal
-area streams until their MAC has a configured area.
+location streams until their MAC has a configured floor and room.
 
 ### 7.1 Quarantine Format and Replay
 
@@ -303,8 +300,8 @@ Processed quarantine segments are retained indefinitely in place.
 ## 8. Data Engine
 
 The Data Engine owns all Data Streams. It maintains a synchronized map keyed by
-normalized `(area type, sensor type)` rather than preallocating inactive streams for
-every possible combination.
+`(floor, room, sensor type)` rather than preallocating inactive streams for every
+possible combination.
 
 On the first write to a key, the Data Engine atomically creates one Data Stream.
 Concurrent first writes for the same key must resolve to the same stream. Each
@@ -343,12 +340,16 @@ Permanent file errors are not retried.
 
 ## 9. Sensor Data Storage
 
-Data is stored beneath the configured root using normalized area and sensor type
-names. The logical layout is:
+Data is stored beneath the configured root using the canonical floor, room, and
+sensor type names encoded as lowercase hexadecimal directory components. The
+logical layout is:
 
 ```text
-<data-root>/<area>/<sensor-type>/<segment-name>.dat
+<data-root>/<hex-floor-name>/<hex-room-name>/<hex-sensor-type-name>/<segment-name>.dat
 ```
+
+For example, `second/living/Temperature` is stored beneath
+`7365636f6e64/6c6976696e67/54656d7065726174757265`.
 
 Each file is append-only and contains fixed-size 12-byte records:
 
@@ -440,7 +441,7 @@ Logs should include structured or consistently formatted context such as:
 
 * Transport and remote address.
 * Connection ID and MAC address.
-* Area and sensor type.
+* Floor, room, and sensor type.
 * Message type and rejection reason.
 * File path and storage operation.
 
@@ -496,7 +497,7 @@ Implementation is complete only with tests covering:
 * Exact UDP datagram boundaries.
 * Bad magic, lengths, checksums, message types, sensor IDs, and MAC changes.
 * Configuration validation and concurrent atomic reload.
-* Concurrent creation of one stream for the same area and sensor type.
+* Concurrent creation of one stream for the same floor, room, and sensor type.
 * Consolidation from multiple devices into one stream.
 * Queue saturation, bounded retries, and isolated stream failure.
 * File rotation and incomplete-tail recovery.

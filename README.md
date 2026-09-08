@@ -35,7 +35,7 @@ accepted records, synchronizes storage, and logs a final counter snapshot.
 	"data_root": "./data",
 	"quarantine_root": "./quarantine",
 	"devices": [
-		{"mac": "02:00:00:ab:cd:ef", "area": "1st Living Room"}
+		{"mac": "02:00:00:ab:cd:ef", "floor": "second", "room": "living"}
 	],
 	"data_stream": {},
 	"network": {},

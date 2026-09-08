@@ -4,7 +4,7 @@
 	"data_root": "./data",
 	"quarantine_root": "./quarantine",
 	"devices": [
-		{"mac": "02:00:00:ab:cd:ef", "area": "LivingRoom"}
+		{"mac": "02:00:00:ab:cd:ef", "floor": "second", "room": "living"}
 	],
 	"data_stream": {},
 	"network": {},
