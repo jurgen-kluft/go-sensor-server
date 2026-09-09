@@ -1,8 +1,11 @@
 package sensorserver
 
-// A light is a collection of bulbs, for example the 2 bulbs above
-// the kitchen table is one light. Each light can be switched on
+// A light is a collection of "bulbs", for example the 2 "bulbs" above
+// the kitchen table are grouped as one light. Each light can be switched on
 // or off, can have brightness, color temperature and HSV.
+
+// TBD: Currently only considering Philips HUE throughout the house since that
+//      would make integration and control more consistent.
 
 type LightFeatures uint8
 
