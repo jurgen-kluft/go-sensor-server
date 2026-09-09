@@ -1,0 +1,104 @@
+{
+    "names": {
+        "02:A1:B2:C3:D4:E6": "Kitchen Left Window",
+        "B2:02:A1:C3:D4:E6": "Kitchen Right Window",
+        "A1:C3:B2:02:D4:E6": "Study Room Door (1st)",
+        "E6:A1:C3:B2:02:D4": "Study Room Window (1st)",
+        "02:A1:B2:C3:D4:E5": "Living Room Main Panel (1st)",
+        "77:33:B2:DD:E7:77": "Living Room Sensor Box (1st)",
+        "C3:D4:E5:02:A1:B2": "Bath Room Panel (2nd)",
+        "02:A1:B2:DD:E7:11": "Basement Storage Sensor"
+    },
+    "devices": [
+        {
+            "mac": "02:A1:B2:C3:D4:E6",
+            "floor": "first",
+            "room": "kitchen",
+            "contact": "window"
+        },
+        {
+            "mac": "B2:02:A1:C3:D4:E6",
+            "floor": "first",
+            "room": "kitchen",
+            "contact": "window"
+        },
+        {
+            "mac": "A1:C3:B2:02:D4:E6",
+            "floor": "first",
+            "room": "study",
+            "contact": "door"
+        },
+        {
+            "mac": "E6:A1:C3:B2:02:D4",
+            "floor": "first",
+            "room": "study",
+            "contact": "window"
+        },
+        {
+            "mac": "02:A1:B2:C3:D4:E5",
+            "floor": "first",
+            "room": "living",
+            "actuators": [
+                "light1",
+                "light2",
+                "light3"
+            ],
+            "display": {
+                "spritepack": "path/to/wall_panel/spritepack.json",
+                "fontpack": "path/to/wall_panel/fontpack.json",
+                "script": "path/to/wall_panel/script.cova"
+            }
+        },
+        {
+            "mac": "C3:D4:E5:02:A1:B2",
+            "floor": "second",
+            "room": "bathroom",
+            "control": [
+                "fan on",
+                "fan off",
+                "heater on",
+                "heater off"
+            ],
+            "actuators": [
+                "light1",
+                "light2",
+                "light3"
+            ],
+            "display": {
+                "spritepack": "path/to/wall_panel/spritepack.json",
+                "fontpack": "path/to/wall_panel/fontpack.json",
+                "script": "path/to/wall_panel/script.cova"
+            }
+        },
+        {
+            "mac": "77:33:B2:DD:E7:77",
+            "floor": "first",
+            "room": "living",
+            "presence": true,
+            "sensors": [
+                "temperature",
+                "humidity",
+                "pressure",
+                "light"
+            ],
+            "display": {
+                "spritepack": "path/to/sensor_box/spritepack.json",
+                "fontpack": "path/to/sensor_box/fontpack.json",
+                "script": "path/to/sensor_box/script.cova"
+            }
+        },
+        {
+            "mac": "02:A1:B2:DD:E7:11",
+            "floor": "basement",
+            "room": "storage",
+            "presence": true,
+            "sensors": [
+                "temperature",
+                "humidity",
+                "pressure",
+                "light",
+                "motion"
+            ]
+        }
+    ]
+}

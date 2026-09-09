@@ -5,3 +5,8 @@ package sensorserver
 // room and set them to a warm color temperature.
 
 // A Christmas theme might set the lights to red and green colors.
+
+// Only if we have HUE lights could we do the above, then the Hue bridge
+// could give us all the available themes, lights etc...
+// Any theme with a certain embedded identifier could be automatically
+// recognized and applied by the system (like a postfix "(theme)")

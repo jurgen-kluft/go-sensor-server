@@ -47,6 +47,9 @@ var roomNameToType = map[string]RoomType{
 	"master_bedroom": ROOM_MASTER_BEDROOM,
 	"staircase":      ROOM_STAIRCASE,
 	"entrance":       ROOM_ENTRANCE,
+	// aliases
+	"storage":  ROOM_BEDROOM1, // Assuming storage is an alias for bedroom1
+	"backroom": ROOM_BEDROOM2, // Assuming backroom is an alias for bedroom2
 }
 
 func (r RoomType) String() string {
