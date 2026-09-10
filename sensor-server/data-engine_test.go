@@ -59,7 +59,7 @@ func TestDataEngineSeparatesStreamKeys(t *testing.T) {
 	defer engine.Close()
 
 	floors := []FloorType{FLOOR_BASEMENT, FLOOR_FIRST, FLOOR_SECOND, FLOOR_THIRD}
-	rooms := []RoomType{ROOM_KITCHEN, ROOM_LIVING, ROOM_BEDROOM1, ROOM_BEDROOM2}
+	rooms := []RoomType{ROOM_KITCHEN, ROOM_LIVING, ROOM_BEDROOM, ROOM_BATHROOM}
 	sensors := []SensorType{SENSOR_ID_TEMPERATURE, SENSOR_ID_HUMIDITY, SENSOR_ID_PRESSURE}
 
 	for i, floor := range floors {
