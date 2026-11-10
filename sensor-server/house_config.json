@@ -1,13 +1,14 @@
 {
     "names": {
-        "02:A1:B2:C3:D4:E6": "Kitchen Left Window",
-        "B2:02:A1:C3:D4:E6": "Kitchen Right Window",
-        "A1:C3:B2:02:D4:E6": "Study Room Door (1st)",
-        "E6:A1:C3:B2:02:D4": "Study Room Window (1st)",
-        "02:A1:B2:C3:D4:E5": "Living Room Main Panel (1st)",
-        "77:33:B2:DD:E7:77": "Living Room Sensor Box (1st)",
-        "C3:D4:E5:02:A1:B2": "Bath Room Panel (2nd)",
-        "02:A1:B2:DD:E7:11": "Basement Storage Sensor"
+        "02:A1:B2:DD:E7:11": "Storage Room Sensor Box (Basement)",
+        "02:A1:B2:DD:E7:12": "Play Room Sensor Box (Basement)",
+        "02:A1:B2:C3:D4:E6": "Kitchen Left Window (1st Floor)",
+        "B2:02:A1:C3:D4:E6": "Kitchen Right Window (1st Floor)",
+        "A1:C3:B2:02:D4:E6": "Study Room Door (1st Floor)",
+        "E6:A1:C3:B2:02:D4": "Study Room Window (1st Floor)",
+        "02:A1:B2:C3:D4:E5": "Living Room Main Panel (1st Floor)",
+        "77:33:B2:DD:E7:77": "Living Room Sensor Box (1st Floor)",
+        "C3:D4:E5:02:A1:B2": "Bath Room Panel (1st Floor)",
     },
     "devices": [
         {
