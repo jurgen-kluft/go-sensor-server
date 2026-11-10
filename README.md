@@ -50,6 +50,32 @@ policy are rejected until restart. Logging output accepts `stdout`, `stderr`,
 or a file path. See [docs/design.md](docs/design.md) for the wire and storage
 formats and all validated limits.
 
+## Storage and current values
+
+Each device/sensor pair has an independent data stream, even when devices share
+a room. Floor and room remain device metadata; changing location does not move
+or split a stream. Files use this layout:
+
+```text
+<data-root>/<12 lowercase MAC hex digits>/<hex-encoded sensor name>/<segment>.dat
+```
+
+For example, `02:00:00:ab:cd:ef` reporting Temperature writes beneath
+`020000abcdef/54656d7065726174757265/`.
+
+`DataEngine.Current(mac, sensorType)` returns the in-memory timestamp/value and
+a boolean indicating whether a reading exists. It follows successful enqueue
+order, not greatest timestamp, and is not a durability guarantee. Rejected
+enqueues leave current unchanged; later disk failures do not roll it back.
+
+Before listeners start, existing streams for configured devices and sensors
+restore their last complete stored record. Incomplete tails are truncated to
+12-byte record boundaries with warnings; empty newest segments fall back to
+earlier complete records. Other recovery failures stop startup. Quarantine
+replay follows restoration and can replace current with an older timestamp.
+Legacy floor/room files are not migrated or read, and unconfigured histories
+are left untouched.
+
 ## HTTP monitoring plugin
 
 The optional plugin lives in `plugins/http` and depends on the core
@@ -80,9 +106,10 @@ The plugin exposes these read-only endpoints:
 - `GET /api/v1/devices/{mac}/sensors/{sensorID}/readings`
 
 Per-device sensor histories are fixed-size in-memory buffers. They begin empty
-on startup and are not restored from the room-level data files. TCP devices
-report their current MAC-bound connection state. UDP devices are connectionless
-and report only their last observed transport and timestamp.
+on startup and are not restored from the device-level data files or engine
+current-value cache. TCP devices report their current MAC-bound connection
+state. UDP devices are connectionless and report only their last observed
+transport and timestamp.
 
 ### Live updates
 

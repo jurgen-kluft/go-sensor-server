@@ -18,13 +18,15 @@ wire.
 * **Device**: An ESP32 identified by its six-byte MAC address.
 * **Location**: A `(floor, room)` pair to which one or more devices belong.
 * **Sensor definition**: A configured sensor type, and unit.
-* **Data stream**: The writer for one `(floor, room, sensor type)` tuple.
+* **Data stream**: The writer and current-value cache for one
+  `(MAC address, sensor type)` pair.
 * **Known device**: A MAC address present in the current configuration.
 * **Unknown device**: A MAC address absent from the current configuration.
 * **Quarantine**: Durable storage for valid messages from unknown devices.
 
-Multiple devices in one location may report the same sensor type. Their readings
-are intentionally consolidated into the same data stream and file sequence.
+Multiple devices in one location may report the same sensor type. Each device
+has independent data streams and file sequences. Floor and room are device
+metadata; changing a device's location does not change its storage identity.
 
 An optional monitoring plugin exists under `plugins/http` . Dependency flows
 from that plugin to the core server package. The executable is the composition
@@ -106,8 +108,10 @@ settings, queue settings, or rotation settings require a process restart. A
 reload containing such changes is rejected and logged.
 
 Removed or changed MAC mappings affect future messages only. Existing records
-are not moved automatically. Quarantined records are replayed only during
-startup, after the initial configuration has been loaded.
+are not moved automatically, and a location change continues using the same
+MAC-based streams. Removed devices' future messages go to quarantine; their
+already active streams are not evicted. Quarantined records are replayed only
+during startup, after the initial configuration has been loaded.
 
 The server polls the configuration file modification time every 15 seconds and
 reloads it when the file has changed.
@@ -253,14 +257,15 @@ For a known MAC, each sensor record is resolved through the sensor registry and
 pushed to the Data Engine using:
 
 ```go
-WriteSensorData(ctx context.Context, floor FloorType, room RoomType, sensorType SensorType, timestamp int64, value int32) error
+WriteSensorData(ctx context.Context, mac MACAddress, sensorType SensorType, timestamp int64, value int32) error
 ```
 
 The API reports whether the record was accepted.
 
 For an unknown MAC, the complete valid message and its server timestamp are
 written to quarantine. Unknown-device messages must not be written to normal
-location streams until their MAC has a configured floor and room.
+device streams until their MAC is configured. Floor and room remain required
+device metadata but do not participate in stream routing.
 
 ### 7.1 Quarantine Format and Replay
 
@@ -300,7 +305,7 @@ Processed quarantine segments are retained indefinitely in place.
 ## 8. Data Engine
 
 The Data Engine owns all Data Streams. It maintains a synchronized map keyed by
-`(floor, room, sensor type)` rather than preallocating inactive streams for every
+`(MAC address, sensor type)` rather than preallocating inactive streams for every
 possible combination.
 
 On the first write to a key, the Data Engine atomically creates one Data Stream.
@@ -312,12 +317,13 @@ active Data Stream owns:
 * The active file and buffered writer.
 * Rotation and flush state.
 * Its terminal error and lifecycle state.
+* A concurrency-safe current record containing timestamp and value.
 
 Only that stream's writer goroutine writes its files. This removes the need for
 locking around individual file writes and preserves queue arrival order.
 
-Arrival order is not necessarily timestamp order when TCP and UDP messages or
-multiple devices feed the same stream.
+Arrival order is not necessarily timestamp order when concurrent TCP and UDP
+messages feed the same device stream.
 
 Data Streams preserve queue arrival order without reordering by timestamp.
 
@@ -338,18 +344,49 @@ milliseconds. Transient file errors are retried up to five times with
 exponential backoff starting at 50 milliseconds and capped at one second.
 Permanent file errors are not retried.
 
-## 9. Sensor Data Storage
+### 8.2 Current Value
 
-Data is stored beneath the configured root using the canonical floor, room, and
-sensor type names encoded as lowercase hexadecimal directory components. The
-logical layout is:
+The stream and engine expose copied timestamp/value pairs:
 
-```text
-<data-root>/<hex-floor-name>/<hex-room-name>/<hex-sensor-type-name>/<segment-name>.dat
+```go
+func (stream *DataStream) Current() (SensorData, bool)
+func (engine *DataEngine) Current(mac MACAddress, sensorType SensorType) (SensorData, bool)
 ```
 
-For example, `second/living/Temperature` is stored beneath
-`7365636f6e64/6c6976696e67/54656d7065726174757265`.
+The boolean indicates whether a record exists; zero timestamps and values are
+valid readings. Engine lookup accesses only an existing stream's memory and
+never creates streams or reads files.
+
+Current means the last successfully enqueued record, in queue acceptance order,
+not the record with the greatest timestamp. Submission and cache publication
+are serialized within the bounded enqueue wait, and current is visible before a
+successful write API call returns. Rejected writes do not replace current.
+The writer goroutine does not update current, so an older disk write cannot
+overwrite a newer accepted value. Later disk failures do not roll it back.
+Current therefore does not imply durability. Read-only access remains available
+after close.
+
+Startup seeds existing configured streams from their final complete stored
+record before quarantine replay. Replay then updates current using normal
+enqueue semantics, even if its timestamps are older. Empty streams have no
+current record. Neither restoration nor replay populates HTTP history buffers
+or emits live monitoring observations.
+
+## 9. Sensor Data Storage
+
+Data is stored beneath the configured root using the six raw MAC bytes as 12
+lowercase hexadecimal digits without separators, followed by the canonical
+sensor type name encoded as lowercase hexadecimal. The logical layout is:
+
+```text
+<data-root>/<mac-hex>/<hex-sensor-type-name>/<segment-name>.dat
+```
+
+For example, MAC `02:00:00:ab:cd:ef` reporting `Temperature` is stored beneath
+`020000abcdef/54656d7065726174757265`.
+
+The old floor/room layout is not migrated or read. Unconfigured device/sensor
+directories and legacy directories are left untouched.
 
 Each file is append-only and contains fixed-size 12-byte records:
 
@@ -363,7 +400,16 @@ the format. Fields must be encoded explicitly.
 
 On startup, a data file whose size is not divisible by 12 has an incomplete
 trailing record. The server warning-logs the condition and truncates the file to
-the last complete record before appending.
+the last complete record before appending, synchronizing the repair. Warnings
+include the file path and discarded byte count. Aligned but corrupt records
+cannot be detected from alignment alone; this format has no record checksum.
+
+Recovery reads only the final 12-byte record of the highest-sequence nonempty
+segment after repairs. If the newest segment is empty or repairs to zero bytes,
+recovery falls back to the preceding nonempty segment. The recovered record is
+selected by append order, not timestamp. Appending still continues in the
+highest existing segment. Read, repair, and other storage failures are explicit
+errors, not silently empty current values.
 
 ### 9.1 Rotation
 
@@ -394,11 +440,18 @@ the process umask, so other processes can read stored data.
 Startup proceeds in this order:
 
 1. Load and validate configuration.
-2. Validate or create storage and quarantine directories.
-3. Discover existing data and quarantine segments and repair incomplete tails.
-4. Create the Data Engine and quarantine writer.
+2. Create the Data Engine.
+3. Discover existing streams for configured MAC addresses and sensor types,
+   repair incomplete tails, and restore current records in memory.
+4. Create/recover the quarantine writer and replay newly recognized messages.
 5. Start UDP and TCP listeners.
 6. Report readiness.
+
+Missing stream directories are normal and do not create inactive streams or
+files. Recovery errors stop startup and close streams already opened.
+Restoration does not sweep unconfigured devices/sensors. There is no separate
+reload-time recovery sweep: a newly configured stream opened on its first
+write performs the same file recovery before accepting that write.
 
 Failure before readiness stops startup and closes all resources already opened.
 
@@ -442,6 +495,7 @@ Logs should include structured or consistently formatted context such as:
 * Transport and remote address.
 * Connection ID and MAC address.
 * Floor, room, and sensor type.
+* MAC address and sensor type for stream-specific diagnostics and snapshots.
 * Message type and rejection reason.
 * File path and storage operation.
 
@@ -460,9 +514,14 @@ The server maintains concurrency-safe internal counters for:
 * File retries and terminal write failures.
 * Bytes written, rotations, and replay progress.
 
-Counters have no external HTTP or Prometheus endpoint. Components expose
-in-process snapshot methods for diagnostics and tests. Counter snapshots are
-logged at INFO level during graceful shutdown.
+Restoring an existing current record does not increment acceptance, write, byte,
+or replay counters. Stream counter snapshots identify streams by MAC address
+and sensor type, including those returned through the HTTP status endpoint.
+
+The core exposes in-process snapshot methods for diagnostics and tests, with
+no HTTP dependency or dedicated metrics endpoint. The optional HTTP plugin
+includes these snapshots in its status response. Counter snapshots are logged
+at INFO level during graceful shutdown.
 
 ## 13. Code Organization
 
@@ -497,10 +556,15 @@ Implementation is complete only with tests covering:
 * Exact UDP datagram boundaries.
 * Bad magic, lengths, checksums, message types, sensor IDs, and MAC changes.
 * Configuration validation and concurrent atomic reload.
-* Concurrent creation of one stream for the same floor, room, and sensor type.
-* Consolidation from multiple devices into one stream.
+* Concurrent creation of one stream for the same MAC address and sensor type.
+* Independent streams for devices in the same room and for different sensors.
+* Stream identity preserved across device location changes.
+* Immediate, coherent current-value lookup in enqueue order under concurrency.
+* Rejected enqueues leaving current unchanged and disk failures not rolling it back.
 * Queue saturation, bounded retries, and isolated stream failure.
 * File rotation and incomplete-tail recovery.
+* Current-value restoration before listeners/replay, empty-segment fallback,
+  configured-only discovery, repair warnings, and cleanup on recovery failure.
 * Unknown-MAC quarantine and interrupted replay.
 * Graceful shutdown with accepted records draining.
 * At least 100 mixed TCP/UDP senders under the Go race detector.
@@ -526,3 +590,7 @@ Implementation is complete only with tests covering:
 * [X] File permissions.
 * [X] Shutdown deadline.
 * [X] Internal counters with no external metrics endpoint.
+* [X] MAC-based stream identity and storage, without legacy migration.
+* [X] Current value follows successful enqueue order, not timestamp or durability.
+* [X] Restore configured existing streams before replay and network readiness.
+* [X] Repair partial trailing records and recover the last complete stored record.

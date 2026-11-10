@@ -229,7 +229,7 @@ func buildStatus(core CoreServer) StatusResponse {
 	}
 	for _, stream := range counters.DataStreams {
 		if stream.Counters.Errors > 0 || stream.Counters.Dropped > 0 {
-			issues = append(issues, fmt.Sprintf("data stream %s/%s/%s has write errors or dropped samples", stream.Floor, stream.Room, stream.SensorType))
+			issues = append(issues, fmt.Sprintf("data stream %s/%s has write errors or dropped samples", formatMAC(stream.MAC), stream.SensorType))
 		}
 	}
 	sort.Strings(issues)

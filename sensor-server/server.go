@@ -77,6 +77,9 @@ func OpenServer(ctx context.Context, configPath string, options ServerOptions) (
 	if err != nil {
 		return nil, err
 	}
+	if err := engine.RestoreStreams(options.FileSystem, config.DataRoot, snapshot); err != nil {
+		return nil, errors.Join(err, engine.Close())
+	}
 	quarantineOptions := DefaultQuarantineOptions(config.QuarantineRoot)
 	quarantineOptions.RotationSize = config.DataStream.RotationSize
 	quarantine, err := OpenQuarantineWriter(options.FileSystem, quarantineOptions)

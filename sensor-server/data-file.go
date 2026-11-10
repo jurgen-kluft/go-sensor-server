@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path/filepath"
 	"strconv"
@@ -22,6 +23,7 @@ type DataFileOptions struct {
 	RotationSize  int64
 	DirectoryMode fs.FileMode
 	FileMode      fs.FileMode
+	OnWarning     func(error)
 }
 
 type DataFileCounters struct {
@@ -51,6 +53,7 @@ type DataFile struct {
 	closed       bool
 	bytesWritten atomic.Uint64
 	rotations    atomic.Uint64
+	initialValue *SensorData
 }
 
 func OpenDataFile(fileSystem FileSystem, options DataFileOptions) (*DataFile, error) {
@@ -76,11 +79,11 @@ func OpenDataFile(fileSystem FileSystem, options DataFileOptions) (*DataFile, er
 		return nil, fmt.Errorf("create data directory %q: %w", options.Directory, err)
 	}
 
-	sequence, size, err := discoverAndRepairSegments(fileSystem, options)
+	sequence, size, initialValue, err := discoverAndRepairSegments(fileSystem, options)
 	if err != nil {
 		return nil, err
 	}
-	dataFile := &DataFile{fileSystem: fileSystem, options: options, sequence: sequence, size: size}
+	dataFile := &DataFile{fileSystem: fileSystem, options: options, sequence: sequence, size: size, initialValue: initialValue}
 	if err := dataFile.openCurrentSegment(); err != nil {
 		return nil, err
 	}
@@ -175,14 +178,17 @@ func (dataFile *DataFile) segmentPath() string {
 	return filepath.Join(dataFile.options.Directory, segmentName(dataFile.sequence))
 }
 
-func discoverAndRepairSegments(fileSystem FileSystem, options DataFileOptions) (uint64, int64, error) {
+func discoverAndRepairSegments(fileSystem FileSystem, options DataFileOptions) (uint64, int64, *SensorData, error) {
 	entries, err := fileSystem.ReadDir(options.Directory)
 	if err != nil {
-		return 0, 0, fmt.Errorf("read data directory %q: %w", options.Directory, err)
+		return 0, 0, nil, fmt.Errorf("read data directory %q: %w", options.Directory, err)
 	}
 	sequence := firstSegmentSequence
 	found := false
 	var activeSize int64
+	var lastSequence uint64
+	var lastPath string
+	var lastSize int64
 	for _, entry := range entries {
 		entrySequence, ok := parseSegmentName(entry.Name())
 		if !ok || entry.IsDir() {
@@ -191,23 +197,28 @@ func discoverAndRepairSegments(fileSystem FileSystem, options DataFileOptions) (
 		path := filepath.Join(options.Directory, entry.Name())
 		info, err := fileSystem.Stat(path)
 		if err != nil {
-			return 0, 0, fmt.Errorf("stat data segment %q: %w", path, err)
+			return 0, 0, nil, fmt.Errorf("stat data segment %q: %w", path, err)
 		}
 		size := info.Size()
 		if remainder := size % SensorDataRecordSize; remainder != 0 {
 			repairedSize := size - remainder
 			file, err := fileSystem.OpenFile(path, readWriteFlags, options.FileMode)
 			if err != nil {
-				return 0, 0, fmt.Errorf("open data segment %q for repair: %w", path, err)
+				return 0, 0, nil, fmt.Errorf("open data segment %q for repair: %w", path, err)
 			}
 			if err := file.Truncate(repairedSize); err != nil {
-				_ = file.Close()
-				return 0, 0, fmt.Errorf("truncate data segment %q: %w", path, err)
+				return 0, 0, nil, fmt.Errorf("truncate data segment %q: %w", path, errors.Join(err, file.Close()))
 			}
 			if err := errors.Join(file.Sync(), file.Close()); err != nil {
-				return 0, 0, fmt.Errorf("close repaired data segment %q: %w", path, err)
+				return 0, 0, nil, fmt.Errorf("close repaired data segment %q: %w", path, err)
+			}
+			if options.OnWarning != nil {
+				options.OnWarning(fmt.Errorf("repaired data segment %q: truncated %d incomplete trailing bytes", path, remainder))
 			}
 			size = repairedSize
+		}
+		if size > 0 && entrySequence > lastSequence {
+			lastSequence, lastPath, lastSize = entrySequence, path, size
 		}
 		if !found || entrySequence > sequence {
 			found = true
@@ -216,9 +227,25 @@ func discoverAndRepairSegments(fileSystem FileSystem, options DataFileOptions) (
 		}
 	}
 	if !found {
-		return firstSegmentSequence, 0, nil
+		return firstSegmentSequence, 0, nil, nil
 	}
-	return sequence, activeSize, nil
+	if lastPath == "" {
+		return sequence, activeSize, nil, nil
+	}
+	file, err := fileSystem.OpenFile(lastPath, readOnlyFlags, options.FileMode)
+	if err != nil {
+		return 0, 0, nil, fmt.Errorf("open data segment %q for recovery: %w", lastPath, err)
+	}
+	var encoded [SensorDataRecordSize]byte
+	_, readErr := io.ReadFull(io.NewSectionReader(file, lastSize-SensorDataRecordSize, SensorDataRecordSize), encoded[:])
+	if err := errors.Join(readErr, file.Close()); err != nil {
+		return 0, 0, nil, fmt.Errorf("read final record from data segment %q: %w", lastPath, err)
+	}
+	last := &SensorData{
+		Timestamp: int64(binary.LittleEndian.Uint64(encoded[0:8])),
+		Value:     int32(binary.LittleEndian.Uint32(encoded[8:12])),
+	}
+	return sequence, activeSize, last, nil
 }
 
 func segmentName(sequence uint64) string {

@@ -195,7 +195,7 @@ func ReplayQuarantine(ctx context.Context, writer *QuarantineWriter, registry *C
 				return counters, err
 			}
 			snapshot := registry.Snapshot()
-			device, known := snapshot.Device(entry.Message.Header.MAC)
+			_, known := snapshot.Device(entry.Message.Header.MAC)
 			if !known {
 				if err := writer.WriteUnknownMessage(ctx, entry); err != nil {
 					return counters, err
@@ -208,7 +208,7 @@ func ReplayQuarantine(ctx context.Context, writer *QuarantineWriter, registry *C
 				if !ok {
 					continue
 				}
-				if err := dataWriter.WriteSensorData(ctx, device.Floor, device.Room, sensor.Type, entry.Timestamp, record.Value); err != nil {
+				if err := dataWriter.WriteSensorData(ctx, entry.Message.Header.MAC, sensor.Type, entry.Timestamp, record.Value); err != nil {
 					return counters, fmt.Errorf("replay %q: %w", segment.path, err)
 				}
 				counters.RecordsWritten++

@@ -18,6 +18,7 @@ const (
 // File is the storage handle used by data streams and quarantine logs.
 type File interface {
 	io.Reader
+	io.ReaderAt
 	io.Writer
 	io.Closer
 	Stat() (fs.FileInfo, error)

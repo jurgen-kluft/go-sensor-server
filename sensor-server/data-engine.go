@@ -1,9 +1,11 @@
 package sensorserver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -12,24 +14,22 @@ import (
 
 var ErrDataEngineClosed = errors.New("data engine is closed")
 
-type DataStreamFactory func(floor FloorType, room RoomType, sensorType SensorType) (*DataStream, error)
+type DataStreamFactory func(mac MACAddress, sensorType SensorType) (*DataStream, error)
 
 type DataEngine struct {
 	factory DataStreamFactory
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	streams map[dataStreamKey]*DataStream
 	closed  atomic.Bool
 }
 
 type dataStreamKey struct {
-	floor      FloorType
-	room       RoomType
+	mac        MACAddress
 	sensorType SensorType
 }
 
 type DataStreamSnapshot struct {
-	Floor      FloorType
-	Room       RoomType
+	MAC        MACAddress
 	SensorType SensorType
 	Counters   DataStreamCounters
 }
@@ -42,40 +42,88 @@ func NewDataEngine(factory DataStreamFactory) (*DataEngine, error) {
 }
 
 func NewFileDataStreamFactory(fileSystem FileSystem, clock Clock, dataRoot string, config DataStreamConfig, onError func(error)) DataStreamFactory {
-	return func(floor FloorType, room RoomType, sensorType SensorType) (*DataStream, error) {
-		fileOptions := DefaultDataFileOptions(filepath.Join(dataRoot, fmt.Sprintf("%04x", floor), fmt.Sprintf("%04x", room), fmt.Sprintf("%04x", sensorType)))
+	return func(mac MACAddress, sensorType SensorType) (*DataStream, error) {
+		fileOptions := DefaultDataFileOptions(dataStreamDirectory(dataRoot, mac, sensorType))
 		fileOptions.BufferSize = config.WriteBufferSize
 		fileOptions.RotationSize = config.RotationSize
+		fileOptions.OnWarning = onError
 		writer, err := OpenDataFile(fileSystem, fileOptions)
 		if err != nil {
 			return nil, err
 		}
 		stream, err := NewDataStream(writer, clock, DataStreamOptions{
+			InitialValue:   writer.initialValue,
 			QueueCapacity:  config.QueueCapacity,
 			EnqueueWait:    config.EnqueueWait.Value(),
 			FlushInterval:  config.FlushInterval.Value(),
 			RetryCount:     config.RetryCount,
 			InitialBackoff: config.InitialBackoff.Value(),
 			MaximumBackoff: config.MaximumBackoff.Value(),
-			OnError:        onError,
+			OnError: func(err error) {
+				if onError != nil {
+					onError(fmt.Errorf("data stream %x/%s: %w", mac, sensorType, err))
+				}
+			},
 		})
 		if err != nil {
-			_ = writer.Close()
-			return nil, err
+			return nil, errors.Join(err, writer.Close())
 		}
 		return stream, nil
 	}
 }
 
-func (engine *DataEngine) WriteSensorData(ctx context.Context, floor FloorType, room RoomType, sensorType SensorType, timestamp int64, value int32) error {
+func dataStreamDirectory(dataRoot string, mac MACAddress, sensorType SensorType) string {
+	return filepath.Join(dataRoot, fmt.Sprintf("%x", mac), fmt.Sprintf("%04x", sensorType))
+}
+
+func (engine *DataEngine) WriteSensorData(ctx context.Context, mac MACAddress, sensorType SensorType, timestamp int64, value int32) error {
 	if engine.closed.Load() {
 		return ErrDataEngineClosed
 	}
-	stream, err := engine.stream(floor, room, sensorType)
+	stream, err := engine.stream(mac, sensorType)
 	if err != nil {
 		return err
 	}
 	return stream.Write(ctx, SensorData{Timestamp: timestamp, Value: value})
+}
+
+func (engine *DataEngine) Current(mac MACAddress, sensorType SensorType) (SensorData, bool) {
+	engine.mu.RLock()
+	stream := engine.streams[dataStreamKey{mac: mac, sensorType: sensorType}]
+	engine.mu.RUnlock()
+	if stream == nil {
+		return SensorData{}, false
+	}
+	return stream.Current()
+}
+
+// RestoreStreams opens only existing streams for the configured devices and sensors.
+func (engine *DataEngine) RestoreStreams(fileSystem FileSystem, dataRoot string, snapshot *ConfigSnapshot) error {
+	if fileSystem == nil || snapshot == nil {
+		return errors.New("restore data streams: nil filesystem or configuration")
+	}
+	for _, device := range snapshot.devices {
+		for sensorType := range snapshot.sensors {
+			directory := dataStreamDirectory(dataRoot, device.MAC, sensorType)
+			entries, err := fileSystem.ReadDir(directory)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("discover data stream %q: %w", directory, err)
+			}
+			for _, entry := range entries {
+				if _, valid := parseSegmentName(entry.Name()); !valid || entry.IsDir() {
+					continue
+				}
+				if _, err := engine.stream(device.MAC, sensorType); err != nil {
+					return fmt.Errorf("restore data streams: %w", err)
+				}
+				break
+			}
+		}
+	}
+	return nil
 }
 
 func (engine *DataEngine) Close() error {
@@ -108,23 +156,20 @@ func (engine *DataEngine) Counters() []DataStreamSnapshot {
 	snapshots := make([]DataStreamSnapshot, 0, len(engine.streams))
 	for key, stream := range engine.streams {
 		snapshots = append(snapshots, DataStreamSnapshot{
-			Floor: key.floor, Room: key.room, SensorType: key.sensorType, Counters: stream.Counters(),
+			MAC: key.mac, SensorType: key.sensorType, Counters: stream.Counters(),
 		})
 	}
 	sort.Slice(snapshots, func(left, right int) bool {
-		if snapshots[left].Floor != snapshots[right].Floor {
-			return snapshots[left].Floor < snapshots[right].Floor
-		}
-		if snapshots[left].Room != snapshots[right].Room {
-			return snapshots[left].Room < snapshots[right].Room
+		if order := bytes.Compare(snapshots[left].MAC[:], snapshots[right].MAC[:]); order != 0 {
+			return order < 0
 		}
 		return snapshots[left].SensorType < snapshots[right].SensorType
 	})
 	return snapshots
 }
 
-func (engine *DataEngine) stream(floor FloorType, room RoomType, sensorType SensorType) (*DataStream, error) {
-	key := dataStreamKey{floor: floor, room: room, sensorType: sensorType}
+func (engine *DataEngine) stream(mac MACAddress, sensorType SensorType) (*DataStream, error) {
+	key := dataStreamKey{mac: mac, sensorType: sensorType}
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
 	if engine.closed.Load() {
@@ -133,9 +178,9 @@ func (engine *DataEngine) stream(floor FloorType, room RoomType, sensorType Sens
 	if stream := engine.streams[key]; stream != nil {
 		return stream, nil
 	}
-	stream, err := engine.factory(floor, room, sensorType)
+	stream, err := engine.factory(mac, sensorType)
 	if err != nil {
-		return nil, fmt.Errorf("create data stream for %s/%s/%s: %w", floor, room, sensorType, err)
+		return nil, fmt.Errorf("create data stream for %x/%s: %w", mac, sensorType, err)
 	}
 	engine.streams[key] = stream
 	return stream, nil

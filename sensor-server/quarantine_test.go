@@ -108,7 +108,7 @@ func TestReplayQuarantineRoutesKnownAndCarriesUnknown(t *testing.T) {
 	if counters.SegmentsCompleted != 1 || counters.MessagesReplayed != 1 || counters.MessagesCarried != 1 || counters.RecordsWritten != 1 {
 		t.Fatalf("replay counters = %+v", counters)
 	}
-	if len(dataWriter.writes) != 1 || dataWriter.writes[0].value != 10 {
+	if len(dataWriter.writes) != 1 || dataWriter.writes[0].mac != knownMAC || dataWriter.writes[0].value != 10 {
 		t.Fatalf("data writes = %+v", dataWriter.writes)
 	}
 	if _, err := os.Stat(filepath.Join(directory, quarantineSegmentName(1)+".done")); err != nil {

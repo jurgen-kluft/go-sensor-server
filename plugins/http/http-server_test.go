@@ -62,6 +62,18 @@ func TestHandlerHealthFailsForPipelineErrors(t *testing.T) {
 	}
 }
 
+func TestHandlerIdentifiesUnhealthyStreamByMAC(t *testing.T) {
+	core, _ := newHandlerTestDependencies(t)
+	core.counters.DataStreams = []sensorserver.DataStreamSnapshot{{
+		MAC: sensorserver.MACAddress{2, 0, 0, 0xab, 0xcd, 0xef}, SensorType: sensorserver.SENSOR_ID_TEMPERATURE,
+		Counters: sensorserver.DataStreamCounters{Dropped: 1},
+	}}
+	status := buildStatus(core)
+	if status.Status != "unhealthy" || len(status.Issues) != 1 || status.Issues[0] != "data stream 02:00:00:ab:cd:ef/Temperature has write errors or dropped samples" {
+		t.Fatalf("status = %+v", status)
+	}
+}
+
 func TestHandlerReturnsEmptyHistoryForUnseenConfiguredSensor(t *testing.T) {
 	core, state := newHandlerTestDependencies(t)
 	recorder := httptest.NewRecorder()

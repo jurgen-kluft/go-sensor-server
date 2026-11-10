@@ -19,7 +19,7 @@ func TestMessageRouterRoutesKnownDeviceRecords(t *testing.T) {
 		t.Fatalf("writes = %d, want 1", len(dataWriter.writes))
 	}
 	write := dataWriter.writes[0]
-	if write.floor != FLOOR_SECOND || write.room != ROOM_LIVING || write.sensorType != SENSOR_ID_TEMPERATURE || write.timestamp != 1234 || write.value != 215 {
+	if write.mac != message.Header.MAC || write.sensorType != SENSOR_ID_TEMPERATURE || write.timestamp != 1234 || write.value != 215 {
 		t.Fatalf("write = %+v", write)
 	}
 }
@@ -45,6 +45,58 @@ func TestMessageRouterObservesOnlyKnownDeviceAndSensorRecords(t *testing.T) {
 	}
 	if observations[0] != want {
 		t.Fatalf("observation = %+v, want %+v", observations[0], want)
+	}
+}
+
+func TestMessageRouterSeparatesDevicesAndPreservesStreamAcrossLocationReload(t *testing.T) {
+	snapshot := loadTestConfig(t, validConfigJSON)
+	config := snapshot.Config()
+	config.Devices = append(config.Devices, DeviceConfig{MAC: "02:00:00:ab:cd:ee", Floor: config.Devices[0].Floor, Room: config.Devices[0].Room})
+	snapshot, err := NewConfigSnapshot(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := NewConfigRegistry(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := NewDataEngine(func(MACAddress, SensorType) (*DataStream, error) {
+		return newTestDataStream(t, &recordingWriter{}, 4)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	router, err := NewMessageRouter(registry, engine, &recordingUnknownWriter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := MACAddress{2, 0, 0, 0xab, 0xcd, 0xef}
+	second := MACAddress{2, 0, 0, 0xab, 0xcd, 0xee}
+	for index, mac := range []MACAddress{first, second} {
+		if err := router.Route(context.Background(), TransportTCP, 1, testRoutedMessage(mac, []SensorRecord{{SensorType: SENSOR_ID_TEMPERATURE, Value: int32(index)}})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config.Devices[0].Room = "kitchen"
+	reloaded, err := NewConfigSnapshot(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Reload(reloaded); err != nil {
+		t.Fatal(err)
+	}
+	if err := router.Route(context.Background(), TransportUDP, 2, testRoutedMessage(first, []SensorRecord{{SensorType: SENSOR_ID_TEMPERATURE, Value: 3}})); err != nil {
+		t.Fatal(err)
+	}
+	if engine.StreamCount() != 2 {
+		t.Fatalf("stream count after location reload = %d, want 2", engine.StreamCount())
+	}
+	if data, ok := engine.Current(first, SENSOR_ID_TEMPERATURE); !ok || data.Value != 3 {
+		t.Fatalf("first device current = %+v, %v", data, ok)
+	}
+	if data, ok := engine.Current(second, SENSOR_ID_TEMPERATURE); !ok || data.Value != 1 {
+		t.Fatalf("second device current = %+v, %v", data, ok)
 	}
 }
 
@@ -142,8 +194,7 @@ func testRoutedMessage(mac MACAddress, sensors []SensorRecord) Message {
 }
 
 type dataWrite struct {
-	floor      FloorType
-	room       RoomType
+	mac        MACAddress
 	sensorType SensorType
 	timestamp  int64
 	value      int32
@@ -153,8 +204,8 @@ type recordingDataWriter struct {
 	writes []dataWrite
 }
 
-func (writer *recordingDataWriter) WriteSensorData(_ context.Context, floor FloorType, room RoomType, sensorType SensorType, timestamp int64, value int32) error {
-	writer.writes = append(writer.writes, dataWrite{floor: floor, room: room, sensorType: sensorType, timestamp: timestamp, value: value})
+func (writer *recordingDataWriter) WriteSensorData(_ context.Context, mac MACAddress, sensorType SensorType, timestamp int64, value int32) error {
+	writer.writes = append(writer.writes, dataWrite{mac: mac, sensorType: sensorType, timestamp: timestamp, value: value})
 	return nil
 }
 

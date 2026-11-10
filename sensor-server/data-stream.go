@@ -26,6 +26,7 @@ type RecordWriter interface {
 }
 
 type DataStreamOptions struct {
+	InitialValue   *SensorData
 	QueueCapacity  int
 	EnqueueWait    time.Duration
 	FlushInterval  time.Duration
@@ -52,7 +53,9 @@ type DataStream struct {
 	clock   Clock
 	options DataStreamOptions
 	queue   chan SensorData
+	enqueue chan struct{}
 	done    chan struct{}
+	current atomic.Pointer[SensorData]
 
 	closeOnce sync.Once
 	submitMu  sync.RWMutex
@@ -92,7 +95,12 @@ func NewDataStream(writer RecordWriter, clock Clock, options DataStreamOptions) 
 		clock:   clock,
 		options: options,
 		queue:   make(chan SensorData, options.QueueCapacity),
+		enqueue: make(chan struct{}, 1),
 		done:    make(chan struct{}),
+	}
+	if options.InitialValue != nil {
+		initial := *options.InitialValue
+		stream.current.Store(&initial)
 	}
 	go stream.run()
 	return stream, nil
@@ -108,8 +116,24 @@ func (stream *DataStream) Write(ctx context.Context, data SensorData) error {
 
 	timer := stream.clock.NewTimer(stream.options.EnqueueWait)
 	defer timer.Stop()
+	// Serialize enqueue and cache publication within the same bounded wait.
+	select {
+	case stream.enqueue <- struct{}{}:
+		defer func() { <-stream.enqueue }()
+	case <-ctx.Done():
+		stream.dropped.Add(1)
+		return ctx.Err()
+	case <-timer.C():
+		stream.dropped.Add(1)
+		return ErrDataStreamFull
+	}
+	if err := ctx.Err(); err != nil {
+		stream.dropped.Add(1)
+		return err
+	}
 	select {
 	case stream.queue <- data:
+		stream.current.Store(&data)
 		stream.accepted.Add(1)
 		return nil
 	case <-ctx.Done():
@@ -119,6 +143,14 @@ func (stream *DataStream) Write(ctx context.Context, data SensorData) error {
 		stream.dropped.Add(1)
 		return ErrDataStreamFull
 	}
+}
+
+// Current returns the last accepted record, not necessarily a durable record.
+func (stream *DataStream) Current() (SensorData, bool) {
+	if data := stream.current.Load(); data != nil {
+		return *data, true
+	}
+	return SensorData{}, false
 }
 
 func (stream *DataStream) Close() error {

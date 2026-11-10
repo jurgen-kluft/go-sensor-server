@@ -1,7 +1,7 @@
 package sensorserver
 
 type Room struct {
-	SensorCount        uint8
+	SensorCount2       uint8
 	SensorOccupancy    uint32
 	SensorValueOffsets []uint16
 }
